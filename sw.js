@@ -7,7 +7,7 @@
  * - คลิปวิดีโอ: ไม่แคช โหลดตอนกดดูเท่านั้น (ไฟล์ใหญ่)
  * VERSION ต้องตรงกับ APP_VERSION ใน assets/app.js — เปลี่ยนทุกครั้งที่ออกเวอร์ชันใหม่ (ล้างแคชเก่าให้เอง)
  */
-const VERSION = '1.3.0';
+const VERSION = '1.3.1';
 const SHELL = 'lp-shell-' + VERSION;
 const RUNTIME = 'lp-runtime-' + VERSION;
 const SHELL_FILES = [

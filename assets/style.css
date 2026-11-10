@@ -500,3 +500,5 @@ dialog.annot::backdrop { background: #000; }
 #ghStatus { font-size: 13px; color: var(--text); min-height: 1.2em; }
 #ghForm .check { color: var(--text); white-space: normal; }
 .unsynced:disabled { opacity: .7; cursor: progress; }
+
+.shot img.zoomable-img { cursor: zoom-in; }
