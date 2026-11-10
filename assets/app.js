@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.11.2';
+const APP_VERSION = '1.11.3';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -1406,7 +1406,7 @@ function loadImg(src) {
   });
 }
 /** WebP when the browser can encode it (most can), otherwise JPEG. High quality: crosshair and small details must stay sharp. */
-const IMG_QUALITY = 0.92;
+const IMG_QUALITY = 0.95;
 function canvasBlob(c) {
   return new Promise((res) => c.toBlob((b) => {
     if (b && b.type === 'image/webp') res(b); else c.toBlob(res, 'image/jpeg', IMG_QUALITY);
@@ -1715,9 +1715,13 @@ const imgW = (i) => i.naturalWidth || i.width;
 const imgH = (i) => i.naturalHeight || i.height;
 const copyShapes = (x) => JSON.parse(JSON.stringify(x));
 
+/** Small pictures (e.g. a tight crop) are enlarged to at least this width with smooth resampling,
+ *  so they don't look blocky on big screens and highlights are drawn crisply. */
+const MIN_OUT_W = 1600;
 function sizeAnnotCanvas() {
   const c = $('#annotCanvas');
-  const k = Math.min(1, MAX_W / imgW(annot.img));
+  const w = imgW(annot.img);
+  const k = Math.min(MAX_W / w, Math.max(1, Math.min(3, MIN_OUT_W / w)));
   c.width = Math.round(imgW(annot.img) * k);
   c.height = Math.round(imgH(annot.img) * k);
 }
