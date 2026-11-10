@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.7.0';
+const APP_VERSION = '1.7.1';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -23,7 +23,7 @@ const LS = {
   gh: 'lp.github.v1',
   fit: 'lp.detailFit',
   pushed: 'lp.pushed.v1',
-  agents: 'lp.api.agents.v2',
+  agents: 'lp.api.agents.v3',
 };
 
 const TYPES = [
@@ -186,7 +186,16 @@ function siteLabels(m, box) {
   }
 }
 
-/** Agent theme colour: the most vivid of valorant-api's background gradient colours, made readable on the dark map. */
+/** Hand-picked theme colours (valorant-api's gradients share similar purples, so picking from them isn't reliable). */
+const AGENT_COLORS = {
+  astra: '#b77cf2', breach: '#f2903d', brimstone: '#e0703a', chamber: '#e6c56b', clove: '#e27ad8',
+  cypher: '#bfcbd6', deadlock: '#8fb4d9', fade: '#8e7fe0', gekko: '#b6f04a', harbor: '#2fc0cf',
+  iso: '#8c6cf2', jett: '#8fd6ff', 'kay/o': '#5fa8ff', killjoy: '#ffd23f', neon: '#3d86ff',
+  omen: '#7175e0', phoenix: '#ff6a33', raze: '#ffa62b', reyna: '#c95ae0', sage: '#3fd9b8',
+  skye: '#7fd65a', sova: '#55a4ff', tejo: '#e8b04a', viper: '#3fe07d', vyse: '#a88ce0',
+  waylay: '#ff8fb8', yoru: '#4a62ff', veto: '#d9d9e8',
+};
+/** Fallback for agents not in the list: the most vivid of valorant-api's background gradient colours. */
 function agentColor(list) {
   let best = null;
   for (const hex of list || []) {
@@ -212,7 +221,7 @@ function pickAgents(arr) {
     .map((a) => ({
       name: a.displayName,
       icon: a.displayIcon,
-      color: agentColor(a.backgroundGradientColors),
+      color: AGENT_COLORS[norm(a.displayName)] || agentColor(a.backgroundGradientColors),
       role: a.role?.displayName || '',
       abilities: (a.abilities || [])
         .filter((x) => x.slot !== 'Passive' && x.displayName)
@@ -2179,7 +2188,7 @@ function bindUi() {
   window.addEventListener('resize', () => { if ($('#zoom').open) zoomApply(); });
 }
 
-const LANDSCAPE_PHONE = matchMedia('(orientation: landscape) and (max-height: 600px)');
+const LANDSCAPE_PHONE = matchMedia('(orientation: landscape) and (max-height: 600px), (orientation: landscape) and (min-width: 900px)'); // phones in landscape and desktop share one layout
 /** Landscape phone: header + map chips live in the right column so the map can use the full height. */
 function placeMapChips() {
   const top = $('header.top');
@@ -2203,6 +2212,14 @@ async function init() {
   bindUi();
   placeMapChips();
   LANDSCAPE_PHONE.addEventListener('change', placeMapChips);
+  // chip rows have hidden scrollbars: let a mouse wheel scroll them sideways
+  for (const row of [$('#maps'), $('#agents')]) {
+    row.addEventListener('wheel', (e) => {
+      if (Math.abs(e.deltaY) <= Math.abs(e.deltaX) || row.scrollWidth <= row.clientWidth) return;
+      e.preventDefault();
+      row.scrollLeft += e.deltaY;
+    }, { passive: false });
+  }
   const [maps, agents, base] = await Promise.all([
     loadApi(MAPS_URL, LS.maps, pickMaps),
     loadApi(AGENTS_URL, LS.agents, pickAgents),
