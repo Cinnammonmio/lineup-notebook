@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.7.1';
+const APP_VERSION = '1.7.2';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -543,8 +543,8 @@ function chips(l) {
 function renderTabs() {
   const n = plans().filter((x) => norm(x.map) === norm(state.map)).length;
   $('#tabs').replaceChildren(
-    el('button', { type: 'button', class: state.tab !== 'plans' || state.plan ? 'on' : '', onclick: () => { state.tab = 'lineups'; state.plan = null; render(); } }, 'Lineup'),
-    el('button', { type: 'button', class: state.tab === 'plans' && !state.plan ? 'on' : '', onclick: () => { state.tab = 'plans'; state.plan = null; state.selected = null; render(); } },
+    el('button', { type: 'button', class: state.tab !== 'plans' ? 'on' : '', onclick: () => { state.tab = 'lineups'; state.plan = null; render(); } }, 'Lineup'),
+    el('button', { type: 'button', class: state.tab === 'plans' ? 'on' : '', onclick: () => { state.tab = 'plans'; state.plan = null; state.selected = null; render(); } },
       'แผน', n ? el('span', { class: 'n', text: String(n) }) : null));
 }
 
@@ -560,6 +560,7 @@ function lineupCard(l, num) {
       onmouseleave: () => hover(null),
     },
     num ? el('span', { class: 'card-n', text: String(num) }) : null,
+    num && agentOf(l.agent)?.icon ? el('img', { class: 'card-agent', src: agentOf(l.agent).icon, alt: l.agent, title: l.agent, loading: 'lazy' }) : null,
     el('span', { class: 'ab' }, icon ? el('img', { src: icon, alt: '', loading: 'lazy' }) : '◆'),
     el('span', { class: 'card-body' },
       el('span', { class: 'card-title', text: l.title || '(ไม่มีชื่อ)' }),
@@ -593,7 +594,7 @@ function renderPlanList(ul, cnt) {
   for (const pl of list) {
     const items = (pl.items || []).map((id) => byId.get(id)).filter(Boolean);
     ul.append(el('li', { class: 'card plan-card' },
-      el('button', { type: 'button', class: 'card-main', onclick: () => { state.plan = pl.id; state.tab = 'lineups'; state.selected = null; render(); } },
+      el('button', { type: 'button', class: 'card-main', onclick: () => { state.plan = pl.id; state.tab = 'plans'; state.selected = null; render(); } },
         el('span', { class: 'card-body' },
           el('span', { class: 'card-title', text: pl.title || '(แผนไม่มีชื่อ)' }),
           el('span', { class: 'card-meta' },
@@ -730,7 +731,7 @@ function bindPlans() {
     saveLineup(d);
     dlg.close();
     state.plan = d.id;
-    state.tab = 'lineups';
+    state.tab = 'plans';
     state.selected = null;
     render();
     toast(ghReady() && gh.cfg.auto ? 'บันทึกแผนแล้ว — กำลังขึ้น GitHub…' : 'บันทึกแผนในเครื่องแล้ว');
