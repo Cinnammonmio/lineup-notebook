@@ -27,13 +27,31 @@
         "caption": "จุดเล็ง"
       },
       {
-        "src": "media/summit/killjoy-a-nanoswarm-mwavgi9kq4bv-aim2.webp",
+        "src": "media/summit/killjoy-a-nanoswarm-mwavgi9kq4bv-aim2-vmwb4yejp.webp",
         "caption": "จุดเล็ง 2"
       }
     ],
     "layout": {
       "col": 0.469,
       "aim": 0.618
+    }
+  },
+  {
+    "id": "mwajratw4gu5",
+    "title": "m4",
+    "map": "Bind",
+    "agent": "Brimstone",
+    "ability": "Incendiary",
+    "side": "attack",
+    "site": "A",
+    "type": "other",
+    "from": {
+      "x": 0.239,
+      "y": 0.296
+    },
+    "to": {
+      "x": 0.696,
+      "y": 0.354
     }
   }
 ]
