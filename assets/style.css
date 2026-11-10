@@ -331,12 +331,18 @@ dialog.sheet.detail { width: min(1100px, calc(100% - 32px)); }
 /* ---------- zoom (full-screen image) ---------- */
 dialog.zoom {
   padding: 0; border: 0; margin: 0; background: #000; color: #fff;
-  width: 100vw; height: 100dvh; max-width: none; max-height: none; cursor: zoom-out;
+  width: 100vw; height: 100dvh; max-width: none; max-height: none; overflow: hidden;
 }
-dialog.zoom[open] { display: grid; place-items: center; }
+dialog.zoom[open] { display: block; }
 dialog.zoom::backdrop { background: #000; }
-dialog.zoom img { max-width: 100%; max-height: 100dvh; object-fit: contain; }
-.zoom-cap { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); background: #000b; padding: 4px 14px; border-radius: 999px; font-size: 14px; }
+.zoom-stage { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; touch-action: none; cursor: zoom-in; user-select: none; -webkit-user-select: none; }
+dialog.zoom.zoomed .zoom-stage { cursor: grab; }
+dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
+.zoom-stage img { max-width: 100%; max-height: 100dvh; object-fit: contain; transform-origin: center center; will-change: transform; -webkit-user-drag: none; pointer-events: auto; }
+.zoom-bar { position: fixed; z-index: 3; right: max(10px, env(safe-area-inset-right)); top: max(10px, env(safe-area-inset-top)); display: flex; gap: 6px; }
+.zoom-btn { width: 42px; height: 42px; border-radius: 10px; border: 1px solid #ffffff33; background: #000b; color: #fff; font-size: 20px; line-height: 1; cursor: pointer; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
+.zoom-btn:hover { background: #000; }
+.zoom-cap { position: fixed; z-index: 3; pointer-events: none; white-space: nowrap; max-width: calc(100% - 24px); overflow: hidden; text-overflow: ellipsis; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); background: #000b; padding: 4px 14px; border-radius: 999px; font-size: 14px; }
 
 /* ---------- touch: bigger targets ---------- */
 @media (pointer: coarse) {
@@ -464,7 +470,7 @@ dialog.zoom img { max-width: 100%; max-height: 100dvh; object-fit: contain; }
   border: 2px solid var(--accent); white-space: nowrap; pointer-events: none;
   text-shadow: 0 1px 2px #000;
 }
-.zoom-badge { position: fixed; bottom: auto; top: max(14px, env(safe-area-inset-top)); font-size: clamp(18px, 3vw, 30px); }
+.zoom-badge { position: fixed; z-index: 3; bottom: auto; top: max(14px, env(safe-area-inset-top)); left: max(16px, env(safe-area-inset-left)); transform: none; font-size: clamp(18px, 3vw, 30px); }
 
 /* ---------- highlight tool ---------- */
 dialog.annot {

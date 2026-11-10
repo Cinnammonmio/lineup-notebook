@@ -4,16 +4,16 @@
 
 | ชนิด | เป้าหมาย |
 |---|---|
-| รูป | WebP กว้าง 1280px ≤ 200 KB |
+| รูป | WebP กว้างสูงสุด 1920px คุณภาพ ~90 (ปกติใส่ผ่านเว็บได้เลย ไม่ต้องย่อเอง) |
 | คลิป | MP4 H.264 720p 30fps ไม่มีเสียง 5–10 วินาที ≤ 3 MB |
 
 ## รูป
 
 ```bash
-ffmpeg -i in.png -vf scale=1280:-2 -quality 75 out.webp
+ffmpeg -i in.png -vf scale=1920:-2 -quality 90 out.webp
 ```
 
-ถ้ายังเกิน 200 KB ลด `-quality` เหลือ 65
+ถ้าไฟล์ใหญ่เกิน 1 MB ลด `-quality` เหลือ 80
 
 ## คลิป
 
@@ -28,5 +28,5 @@ ffmpeg -i in.mp4 -vf scale=-2:720,fps=30 -an -c:v libx264 -crf 28 -preset slow -
 ## ทำทีเดียวทั้งโฟลเดอร์ (PowerShell)
 
 ```powershell
-Get-ChildItem *.png | ForEach-Object { ffmpeg -y -i $_.FullName -vf scale=1280:-2 -quality 75 ($_.BaseName + ".webp") }
+Get-ChildItem *.png | ForEach-Object { ffmpeg -y -i $_.FullName -vf scale=1920:-2 -quality 90 ($_.BaseName + ".webp") }
 ```

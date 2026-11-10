@@ -624,12 +624,105 @@ function pairFig(m, label, badge) {
     badge ? el('span', { class: 'throw-badge', text: badge }) : null);
 }
 
+/* ---------- full-screen image with zoom: pinch / double-tap / wheel / buttons, drag to pan ---------- */
+
+const zm = { s: 1, x: 0, y: 0, pts: new Map(), pinch: null, tap: null, lastTap: 0, img: null, stage: null };
+const Z_MAX = 6;
+
 function zoom(src, caption, badge) {
   const z = $('#zoom');
-  z.replaceChildren(el('img', { src: mediaSrc(src), alt: caption || '' }),
-    ...(caption ? [el('span', { class: 'zoom-cap', text: caption })] : []),
+  zm.img = el('img', { src: mediaSrc(src), alt: caption || '', draggable: 'false' });
+  zm.stage = el('div', { class: 'zoom-stage' }, zm.img);
+  const btn = (t, label, fn) => el('button', { type: 'button', class: 'zoom-btn', title: label, 'aria-label': label, onclick: (e) => { e.stopPropagation(); fn(); } }, t);
+  const center = () => { const r = zm.stage.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+  z.replaceChildren(zm.stage,
+    el('div', { class: 'zoom-bar' },
+      btn('−', 'ซูมออก', () => zoomAt(zm.s / 1.5, ...center(), true)),
+      btn('＋', 'ซูมเข้า', () => zoomAt(zm.s * 1.5, ...center(), true)),
+      btn('⟲', 'ขนาดปกติ', () => zoomReset(true)),
+      btn('✕', 'ปิด', () => z.close())),
+    ...(caption ? [el('span', { class: 'zoom-cap', text: caption + ' · จีบนิ้ว / แตะ 2 ครั้งเพื่อซูม' })] : []),
     ...(badge ? [el('span', { class: 'throw-badge zoom-badge', text: badge })] : []));
+  zoomReset();
+  bindZoomStage(zm.stage);
   z.showModal();
+}
+
+function zoomApply(animate) {
+  const { img, stage } = zm;
+  if (!img) return;
+  // keep the picture on screen: pan only as far as the zoomed image overflows the stage
+  const mx = Math.max(0, (img.offsetWidth * zm.s - stage.clientWidth) / 2);
+  const my = Math.max(0, (img.offsetHeight * zm.s - stage.clientHeight) / 2);
+  zm.x = Math.min(mx, Math.max(-mx, zm.x));
+  zm.y = Math.min(my, Math.max(-my, zm.y));
+  img.style.transition = animate ? 'transform .2s ease-out' : 'none';
+  img.style.transform = `translate(${zm.x}px, ${zm.y}px) scale(${zm.s})`;
+  $('#zoom').classList.toggle('zoomed', zm.s > 1.01);
+}
+function zoomReset(animate) { zm.s = 1; zm.x = 0; zm.y = 0; zoomApply(animate); }
+/** Zoom to scale ns keeping the screen point (px, py) under the finger / cursor. */
+function zoomAt(ns, px, py, animate) {
+  ns = Math.min(Z_MAX, Math.max(1, ns));
+  const r = zm.stage.getBoundingClientRect();
+  const cx = px - (r.left + r.width / 2), cy = py - (r.top + r.height / 2);
+  zm.x = cx - (ns / zm.s) * (cx - zm.x);
+  zm.y = cy - (ns / zm.s) * (cy - zm.y);
+  zm.s = ns;
+  zoomApply(animate);
+}
+
+function bindZoomStage(stage) {
+  const pts = zm.pts;
+  pts.clear();
+  const dist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  const mid = () => { const [a, b] = [...pts.values()]; return [(a.x + b.x) / 2, (a.y + b.y) / 2]; };
+  stage.addEventListener('pointerdown', (e) => {
+    stage.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) { zm.pinch = { d: dist(), s: zm.s, m: mid() }; zm.tap = null; }
+    else zm.tap = { x: e.clientX, y: e.clientY, t: Date.now(), onImg: e.target === zm.img };
+    zm.closeOnClick = false;
+  });
+  stage.addEventListener('pointermove', (e) => {
+    const p = pts.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (pts.size === 2 && zm.pinch) {
+      const [mx, my] = mid();
+      zm.x += mx - zm.pinch.m[0]; zm.y += my - zm.pinch.m[1];
+      zm.pinch.m = [mx, my];
+      zoomAt(zm.pinch.s * dist() / zm.pinch.d, mx, my);
+    } else if (pts.size === 1 && zm.s > 1) {
+      zm.x += dx; zm.y += dy;
+      zoomApply();
+    }
+    if (zm.tap && Math.hypot(e.clientX - zm.tap.x, e.clientY - zm.tap.y) > 10) zm.tap = null;
+  });
+  const up = (e) => {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) zm.pinch = null;
+    const t = zm.tap;
+    zm.tap = null;
+    if (!t || e.type === 'pointercancel' || Date.now() - t.t > 300) return;
+    if (Date.now() - zm.lastTap < 320) { // double tap: toggle 2.5× at that spot
+      zm.lastTap = 0;
+      if (zm.s > 1.01) zoomReset(true); else zoomAt(2.5, e.clientX, e.clientY, true);
+    } else {
+      zm.lastTap = Date.now();
+      // tap on the black area closes — on 'click', so the follow-up click can't hit (and reopen) the image underneath
+      zm.closeOnClick = !t.onImg && zm.s <= 1.01;
+    }
+  };
+  stage.addEventListener('pointerup', up);
+  stage.addEventListener('pointercancel', up);
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoomAt(zm.s * (e.deltaY < 0 ? 1.2 : 1 / 1.2), e.clientX, e.clientY);
+  }, { passive: false });
+  stage.addEventListener('dblclick', (e) => e.preventDefault());
+  stage.addEventListener('click', () => { if (zm.closeOnClick) { zm.closeOnClick = false; $('#zoom').close(); } });
 }
 
 function neighbour(id, dir) {
@@ -755,19 +848,35 @@ function loadImg(src) {
     i.src = url;
   });
 }
-/** WebP when the browser can encode it (most can), otherwise JPEG. */
+/** WebP when the browser can encode it (most can), otherwise JPEG. High quality: crosshair and small details must stay sharp. */
+const IMG_QUALITY = 0.92;
 function canvasBlob(c) {
   return new Promise((res) => c.toBlob((b) => {
-    if (b && b.type === 'image/webp') res(b); else c.toBlob(res, 'image/jpeg', 0.85);
-  }, 'image/webp', 0.8));
+    if (b && b.type === 'image/webp') res(b); else c.toBlob(res, 'image/jpeg', IMG_QUALITY);
+  }, 'image/webp', IMG_QUALITY));
 }
-const MAX_W = 1280;
+/** Full HD: a normal 1920×1080 game screenshot keeps its native resolution. */
+const MAX_W = 1920;
+/** Draw an image at w×h; big reductions are done in halving steps so text and lines don't turn jagged or blurry. */
+function drawScaled(img, w, h) {
+  let src = img, sw = img.naturalWidth || img.width, sh = img.naturalHeight || img.height;
+  while (sw / 2 >= w) {
+    const step = el('canvas', { width: Math.round(sw / 2), height: Math.round(sh / 2) });
+    const sctx = step.getContext('2d');
+    sctx.imageSmoothingQuality = 'high';
+    sctx.drawImage(src, 0, 0, step.width, step.height);
+    src = step; sw = step.width; sh = step.height;
+  }
+  const c = el('canvas', { width: w, height: h });
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, w, h);
+  return c;
+}
 async function shrinkImage(file) {
   const img = await loadImg(file);
   const k = Math.min(1, MAX_W / img.naturalWidth);
-  const c = el('canvas', { width: Math.round(img.naturalWidth * k), height: Math.round(img.naturalHeight * k) });
-  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-  return canvasBlob(c);
+  return canvasBlob(drawScaled(img, Math.round(img.naturalWidth * k), Math.round(img.naturalHeight * k)));
 }
 const slug = (s) => norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
 const extOf = (blob) => (blob.type === 'image/webp' ? 'webp' : 'jpg');
@@ -1034,6 +1143,7 @@ function drawShape(ctx, sh, w, h) {
 function drawAnnot() {
   const c = $('#annotCanvas');
   const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(annot.img, 0, 0, c.width, c.height);
   for (const sh of annot.shapes) drawShape(ctx, sh, c.width, c.height);
 }
@@ -1565,7 +1675,8 @@ function bindUi() {
       if (n) openDetail(n.id);
     }
   });
-  $('#zoom').addEventListener('click', () => $('#zoom').close());
+  $('#zoom').addEventListener('close', () => { zm.img = null; zm.stage = null; zm.pts.clear(); });
+  window.addEventListener('resize', () => { if ($('#zoom').open) zoomApply(); });
 }
 
 const LANDSCAPE_PHONE = matchMedia('(orientation: landscape) and (max-height: 600px)');
