@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.7.2';
+const APP_VERSION = '1.7.3';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -121,6 +121,7 @@ const state = {
   f: { agents: new Set([store.get(LS.agent, [])].flat().filter((x) => typeof x === 'string')), side: 'all', site: 'all', type: 'all', q: '', todo: false },
   selected: null,
   plan: null,
+  hoverPlan: null,
   tab: 'lineups',
   pick: null,
   editing: null,
@@ -450,8 +451,11 @@ function renderMap() {
   siteLabels(m, pins);
 
   const sel = state.selected;
-  const plan = activePlan();
-  const list = visible().filter((l) => l.from || l.to).sort((a, b) => (a.id === sel) - (b.id === sel));
+  // hovering a plan card in the plan list previews that plan on the map
+  const preview = state.tab === 'plans' && !state.plan && state.hoverPlan ? plans().find((x) => x.id === state.hoverPlan) : null;
+  const plan = activePlan() || preview;
+  const pool = preview ? all().filter((l) => norm(l.map) === norm(state.map) && preview.items.includes(l.id)) : visible();
+  const list = pool.filter((l) => l.from || l.to).sort((a, b) => (a.id === sel) - (b.id === sel));
   for (const l of list) {
     const cls = 'side-' + (l.side || 'none') + (sel && sel !== l.id ? ' dim' : '') + (sel === l.id ? ' sel' : '');
     lineEls(l, cls, svg, pins, true, plan ? plan.items.indexOf(l.id) + 1 : 0);
@@ -593,7 +597,12 @@ function renderPlanList(ul, cnt) {
   const byId = new Map(all().map((l) => [l.id, l]));
   for (const pl of list) {
     const items = (pl.items || []).map((id) => byId.get(id)).filter(Boolean);
-    ul.append(el('li', { class: 'card plan-card' },
+    const peek = (on) => { state.hoverPlan = on ? pl.id : null; renderMap(); };
+    ul.append(el('li', {
+      class: 'card plan-card',
+      onmouseenter: () => peek(true), onmouseleave: () => peek(false),
+      onfocusin: () => peek(true), onfocusout: () => peek(false),
+    },
       el('button', { type: 'button', class: 'card-main', onclick: () => { state.plan = pl.id; state.tab = 'plans'; state.selected = null; render(); } },
         el('span', { class: 'card-body' },
           el('span', { class: 'card-title', text: pl.title || '(แผนไม่มีชื่อ)' }),
@@ -610,6 +619,7 @@ function renderPlanList(ul, cnt) {
 }
 
 function renderList() {
+  if (state.tab !== 'plans' || state.plan) state.hoverPlan = null;
   const ul = $('#list');
   const cnt = $('#count');
   renderTabs();
