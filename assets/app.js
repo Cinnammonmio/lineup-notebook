@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.3.1';
+const APP_VERSION = '1.4.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -1009,7 +1009,7 @@ async function annotateShot(kind) {
   }
   const out = await openAnnot(orig, shapes || [], SHOT_LABEL[kind]);
   if (!out) return;
-  state.editing.shots[kind] = { ...s, orig, blob: out.blob, shapes: out.shapes, url: URL.createObjectURL(out.blob), dirty: true };
+  state.editing.shots[kind] = { ...s, orig: out.base, blob: out.blob, shapes: out.shapes, url: URL.createObjectURL(out.blob), dirty: true };
   renderShots();
 }
 
@@ -1100,29 +1100,46 @@ async function buildMedia(d) {
   return [...out, ...readRestMedia()];
 }
 
-/* ---------- highlight tool ---------- */
+/* ---------- highlight tool: circle / arrow / pen / crop ---------- */
 
-const annot = { img: null, shapes: [], tool: 'circle', color: '#ff4655', cur: null, resolve: null };
+const CIRCLE_SIZES = { s: 0.035, m: 0.06, l: 0.1 };   // radius as a share of the image width (tap to place)
+const LINE_WIDTHS = { thin: 0.6, mid: 1, thick: 1.8 };
+const annot = {
+  img: null, baseBlob: null, shapes: [], history: [], crop: null, cur: null, before: null, resolve: null,
+  tool: 'circle', color: '#ff4655', size: 'm', width: 'mid', dash: false,
+};
+const imgW = (i) => i.naturalWidth || i.width;
+const imgH = (i) => i.naturalHeight || i.height;
+const copyShapes = (x) => JSON.parse(JSON.stringify(x));
+
+function sizeAnnotCanvas() {
+  const c = $('#annotCanvas');
+  const k = Math.min(1, MAX_W / imgW(annot.img));
+  c.width = Math.round(imgW(annot.img) * k);
+  c.height = Math.round(imgH(annot.img) * k);
+}
 
 async function openAnnot(blob, shapes, label) {
   annot.img = await loadImg(blob);
-  annot.shapes = JSON.parse(JSON.stringify(shapes));
-  const c = $('#annotCanvas');
-  const k = Math.min(1, MAX_W / annot.img.naturalWidth);
-  c.width = Math.round(annot.img.naturalWidth * k);
-  c.height = Math.round(annot.img.naturalHeight * k);
+  annot.baseBlob = blob;
+  annot.shapes = copyShapes(shapes);
+  annot.history = [];
+  annot.crop = null;
+  sizeAnnotCanvas();
   $('#annot').setAttribute('aria-label', 'ไฮไลต์รูป' + label);
+  syncAnnotBar();
   drawAnnot();
   $('#annot').showModal();
   return new Promise((res) => { annot.resolve = res; });
 }
 
 function drawShape(ctx, sh, w, h) {
-  const lw = Math.max(3, Math.round(w / 200));
+  const lw = Math.max(2, Math.round(w / 200 * (sh.w || 1)));
   ctx.save();
   ctx.strokeStyle = sh.color; ctx.fillStyle = sh.color; ctx.lineWidth = lw;
-  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.lineCap = sh.dash ? 'butt' : 'round'; ctx.lineJoin = 'round';
   ctx.shadowColor = 'rgba(0,0,0,.65)'; ctx.shadowBlur = lw * 1.5;
+  if (sh.dash) ctx.setLineDash([lw * 3, lw * 2.2]);
   ctx.beginPath();
   if (sh.type === 'circle') {
     const cx = (sh.x1 + sh.x2) / 2 * w, cy = (sh.y1 + sh.y2) / 2 * h;
@@ -1130,8 +1147,9 @@ function drawShape(ctx, sh, w, h) {
     ctx.stroke();
   } else if (sh.type === 'arrow') {
     const x1 = sh.x1 * w, y1 = sh.y1 * h, x2 = sh.x2 * w, y2 = sh.y2 * h;
-    const a = Math.atan2(y2 - y1, x2 - x1), hl = lw * 4.5;
-    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    const a = Math.atan2(y2 - y1, x2 - x1), hl = Math.max(lw * 4.5, 12);
+    ctx.moveTo(x1, y1); ctx.lineTo(x2 - Math.cos(a) * hl * 0.6, y2 - Math.sin(a) * hl * 0.6); ctx.stroke();
+    ctx.setLineDash([]);
     ctx.beginPath();
     ctx.moveTo(x2, y2);
     ctx.lineTo(x2 - hl * Math.cos(a - 0.45), y2 - hl * Math.sin(a - 0.45));
@@ -1144,12 +1162,72 @@ function drawShape(ctx, sh, w, h) {
   ctx.restore();
 }
 
+/** Picture + highlights only (what gets saved). */
+function paintAnnot(ctx, w, h) {
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(annot.img, 0, 0, w, h);
+  for (const sh of annot.shapes) drawShape(ctx, sh, w, h);
+}
+
 function drawAnnot() {
   const c = $('#annotCanvas');
   const ctx = c.getContext('2d');
+  paintAnnot(ctx, c.width, c.height);
+  const cr = annot.crop;
+  if (cr) { // dim everything outside the crop box
+    const [x, y, w, h] = [cr.x * c.width, cr.y * c.height, cr.w * c.width, cr.h * c.height];
+    ctx.save();
+    ctx.fillStyle = 'rgba(0,0,0,.6)';
+    ctx.beginPath(); ctx.rect(0, 0, c.width, c.height); ctx.rect(x, y, w, h); ctx.fill('evenodd');
+    ctx.strokeStyle = '#fff'; ctx.lineWidth = Math.max(2, c.width / 500); ctx.setLineDash([10, 6]);
+    ctx.strokeRect(x, y, w, h);
+    ctx.restore();
+  }
+  $('#annot [data-annot=applycrop]').hidden = !cr || cr.w < 0.02 || cr.h < 0.02;
+}
+
+function syncAnnotBar() {
+  const bar = $('#annot');
+  for (const b of bar.querySelectorAll('[data-tool]')) b.classList.toggle('on', b.dataset.tool === annot.tool);
+  for (const b of bar.querySelectorAll('[data-color]')) b.classList.toggle('on', b.dataset.color === annot.color);
+  for (const b of bar.querySelectorAll('[data-size]')) b.classList.toggle('on', b.dataset.size === annot.size);
+  for (const b of bar.querySelectorAll('[data-width]')) b.classList.toggle('on', b.dataset.width === annot.width);
+  bar.querySelector('[data-annot=dash]').classList.toggle('on', annot.dash);
+  bar.querySelector('.annot-sizes').hidden = annot.tool !== 'circle';
+  const cropping = annot.tool === 'crop';
+  for (const g of bar.querySelectorAll('.annot-style')) g.hidden = cropping;
+  $('#annotCanvas').style.cursor = 'crosshair';
+  $('#annot .annot-hint').textContent = cropping
+    ? 'ลากกรอบส่วนที่ต้องการ แล้วกด ✓ ใช้ครอป'
+    : annot.tool === 'circle' ? 'แตะ = วงกลมขนาดที่เลือก · ลาก = กำหนดขนาดเอง' : '';
+}
+
+function pushHistory() {
+  annot.history.push({ img: annot.img, baseBlob: annot.baseBlob, shapes: copyShapes(annot.shapes) });
+  if (annot.history.length > 50) annot.history.shift();
+}
+
+function applyCrop() {
+  const cr = annot.crop;
+  annot.crop = null;
+  if (!cr || cr.w < 0.02 || cr.h < 0.02) { drawAnnot(); return; }
+  const W = imgW(annot.img), H = imgH(annot.img);
+  const cv = el('canvas', { width: Math.round(cr.w * W), height: Math.round(cr.h * H) });
+  const ctx = cv.getContext('2d');
   ctx.imageSmoothingQuality = 'high';
-  ctx.drawImage(annot.img, 0, 0, c.width, c.height);
-  for (const sh of annot.shapes) drawShape(ctx, sh, c.width, c.height);
+  ctx.drawImage(annot.img, cr.x * W, cr.y * H, cr.w * W, cr.h * H, 0, 0, cv.width, cv.height);
+  pushHistory();
+  // move highlights into the cropped picture's coordinates
+  const fx = (x) => round3((x - cr.x) / cr.w), fy = (y) => round3((y - cr.y) / cr.h);
+  annot.shapes = annot.shapes.map((sh) => (sh.type === 'pen'
+    ? { ...sh, pts: sh.pts.map(([x, y]) => [fx(x), fy(y)]), w: (sh.w || 1) / cr.w }
+    : { ...sh, x1: fx(sh.x1), y1: fy(sh.y1), x2: fx(sh.x2), y2: fy(sh.y2), w: (sh.w || 1) / cr.w }));
+  annot.img = cv;
+  annot.baseBlob = null;
+  sizeAnnotCanvas();
+  annot.tool = 'circle';
+  syncAnnotBar();
+  drawAnnot();
 }
 
 function closeAnnot(result) {
@@ -1157,6 +1235,24 @@ function closeAnnot(result) {
   annot.resolve = null;
   if ($('#annot').open) $('#annot').close();
   r?.(result);
+}
+
+async function finishAnnot() {
+  if (annot.crop) applyCrop();
+  const c = $('#annotCanvas');
+  annot.crop = null;
+  paintAnnot(c.getContext('2d'), c.width, c.height); // no crop overlay in the saved picture
+  const blob = await canvasBlob(c);
+  // base = picture without highlights (cropped if cropped), kept so highlights stay editable later
+  let base = annot.baseBlob;
+  if (!base) {
+    const bc = el('canvas', { width: c.width, height: c.height });
+    const bctx = bc.getContext('2d');
+    bctx.imageSmoothingQuality = 'high';
+    bctx.drawImage(annot.img, 0, 0, bc.width, bc.height);
+    base = await canvasBlob(bc);
+  }
+  closeAnnot({ blob, base, shapes: annot.shapes });
 }
 
 function bindAnnot() {
@@ -1168,21 +1264,34 @@ function bindAnnot() {
   c.addEventListener('pointerdown', (e) => {
     c.setPointerCapture(e.pointerId);
     const [x, y] = pt(e);
+    if (annot.tool === 'crop') { annot.cur = { crop: true, x1: x, y1: y }; annot.crop = { x, y, w: 0, h: 0 }; return; }
+    annot.before = { img: annot.img, baseBlob: annot.baseBlob, shapes: copyShapes(annot.shapes) };
+    const style = { color: annot.color, w: LINE_WIDTHS[annot.width], dash: annot.dash || undefined };
     annot.cur = annot.tool === 'pen'
-      ? { type: 'pen', color: annot.color, pts: [[x, y]] }
-      : { type: annot.tool, color: annot.color, x1: x, y1: y, x2: x, y2: y };
+      ? { type: 'pen', ...style, pts: [[x, y]] }
+      : { type: annot.tool, ...style, x1: x, y1: y, x2: x, y2: y };
     annot.shapes.push(annot.cur);
   });
   c.addEventListener('pointermove', (e) => {
-    if (!annot.cur) return;
+    const cur = annot.cur;
+    if (!cur) return;
     const [x, y] = pt(e);
-    if (annot.cur.type === 'pen') annot.cur.pts.push([x, y]); else { annot.cur.x2 = x; annot.cur.y2 = y; }
+    if (cur.crop) annot.crop = { x: Math.min(cur.x1, x), y: Math.min(cur.y1, y), w: Math.abs(x - cur.x1), h: Math.abs(y - cur.y1) };
+    else if (cur.type === 'pen') cur.pts.push([x, y]);
+    else { cur.x2 = x; cur.y2 = y; }
     drawAnnot();
   });
   const end = () => {
     const sh = annot.cur;
     annot.cur = null;
-    if (sh && sh.type !== 'pen' && Math.hypot(sh.x2 - sh.x1, sh.y2 - sh.y1) < 0.01) annot.shapes.pop(); // a tap, not a drag
+    if (!sh || sh.crop) { drawAnnot(); return; }
+    const tiny = sh.type !== 'pen' && Math.hypot(sh.x2 - sh.x1, sh.y2 - sh.y1) < 0.01;
+    if (tiny && sh.type === 'circle') { // tap: place a circle of the chosen size
+      const r = CIRCLE_SIZES[annot.size], ry = r * c.width / c.height;
+      Object.assign(sh, { x1: sh.x1 - r, x2: sh.x1 + r, y1: sh.y1 - ry, y2: sh.y1 + ry });
+    } else if (tiny) annot.shapes.pop();
+    if (annot.shapes.includes(sh)) { annot.history.push(annot.before); }
+    annot.before = null;
     drawAnnot();
   };
   c.addEventListener('pointerup', end);
@@ -1191,13 +1300,25 @@ function bindAnnot() {
   $('#annot').addEventListener('click', async (e) => {
     const b = e.target.closest('button');
     if (!b) return;
-    if (b.dataset.tool) { annot.tool = b.dataset.tool; for (const x of b.parentNode.children) x.classList.toggle('on', x === b); }
-    if (b.dataset.color) { annot.color = b.dataset.color; for (const x of b.parentNode.children) x.classList.toggle('on', x === b); }
-    const act = b.dataset.annot;
-    if (act === 'undo') { annot.shapes.pop(); drawAnnot(); }
-    if (act === 'clear') { annot.shapes = []; drawAnnot(); }
-    if (act === 'cancel') closeAnnot(null);
-    if (act === 'done') closeAnnot({ blob: await canvasBlob(c), shapes: annot.shapes });
+    const d = b.dataset;
+    if (d.tool) { annot.tool = d.tool; if (d.tool !== 'crop') annot.crop = null; }
+    if (d.color) annot.color = d.color;
+    if (d.size) annot.size = d.size;
+    if (d.width) annot.width = d.width;
+    if (d.annot === 'dash') annot.dash = !annot.dash;
+    if (d.annot === 'undo') {
+      if (annot.crop) annot.crop = null;
+      else {
+        const prev = annot.history.pop();
+        if (prev) { Object.assign(annot, prev); sizeAnnotCanvas(); }
+      }
+    }
+    if (d.annot === 'clear' && annot.shapes.length) { pushHistory(); annot.shapes = []; }
+    if (d.annot === 'applycrop') applyCrop();
+    if (d.annot === 'cancel') { closeAnnot(null); return; }
+    if (d.annot === 'done') { await finishAnnot(); return; }
+    syncAnnotBar();
+    drawAnnot();
   });
   $('#annot').addEventListener('close', () => closeAnnot(null));
 }

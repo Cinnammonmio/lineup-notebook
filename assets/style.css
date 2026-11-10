@@ -483,11 +483,27 @@ dialog.annot::backdrop { background: #000; }
   display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px;
   padding-top: max(8px, env(safe-area-inset-top)); background: var(--panel); border-bottom: 1px solid var(--line);
 }
-.annot-tools, .annot-colors { display: flex; gap: 4px; }
-.annot-tools button { width: 40px; height: 36px; border-radius: 8px; border: 1px solid var(--line); background: var(--panel2); cursor: pointer; font-size: 18px; }
-.annot-tools button.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--panel2)); }
-.annot-colors button { width: 30px; height: 30px; border-radius: 50%; border: 2px solid var(--line2); background: var(--c); cursor: pointer; }
+.annot-group { display: flex; align-items: center; gap: 4px; flex: 0 0 auto; }
+.annot-lbl { font-size: 12px; color: var(--muted); margin: 0 2px 0 4px; }
+.annot-group > button:not([data-color]) {
+  min-width: 36px; height: 34px; padding: 0 6px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel2); color: var(--text); cursor: pointer; font-size: 16px; font-weight: 600;
+  display: inline-grid; place-items: center;
+}
+.annot-group > button.on:not([data-color]) { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 18%, var(--panel2)); }
+.lw { display: block; width: 20px; height: var(--lw, 3px); border-radius: 4px; background: currentColor; }
+.lw.dash { height: 3px; background: repeating-linear-gradient(90deg, currentColor 0 5px, transparent 5px 9px); }
+.annot-colors button { width: 28px; height: 28px; border-radius: 50%; border: 2px solid var(--line2); background: var(--c); cursor: pointer; }
 .annot-colors button.on { box-shadow: 0 0 0 2px var(--panel), 0 0 0 4px var(--c); }
+.annot-hint { min-height: 0; text-align: center; font-size: 12px; color: var(--muted); padding: 2px 8px 0; }
+.annot-hint:empty { display: none; }
+@media (orientation: landscape) and (max-height: 600px) {
+  .annot-bar { flex-wrap: nowrap; overflow-x: auto; padding: 6px 8px; gap: 6px; scrollbar-width: none; }
+  .annot-bar .grow { display: none; }
+  .annot-group > button:not([data-color]) { min-width: 32px; height: 30px; }
+  .annot-colors button { width: 24px; height: 24px; }
+  .annot-stage { padding: 4px; }
+}
 .annot-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 10px; }
 #annotCanvas { max-width: 100%; max-height: 100%; touch-action: none; cursor: crosshair; border-radius: 6px; background: #000; }
 .title-row input, .pk-text { color: var(--text); }
