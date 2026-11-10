@@ -269,3 +269,88 @@ dialog.sheet::backdrop { background: #05070acc; }
 }
 .toast.show { display: block; }
 .toast:popover-open { display: block; }
+
+/* ---------- detail: stand / aim pair ---------- */
+dialog.sheet.detail { width: min(1100px, calc(100% - 32px)); }
+.zoomable { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
+.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 0 0 auto; }
+.pair-fig { margin: 0; position: relative; min-width: 0; }
+.pair-fig img, .pair-empty {
+  display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover;
+  border-radius: 10px; background: #000; border: 1px solid var(--line);
+}
+.pair-empty { display: grid; place-items: center; color: var(--muted); font-size: 14px; border-style: dashed; background: var(--panel2); }
+.pair-fig figcaption {
+  position: absolute; left: 8px; top: 8px; font-size: 13px; font-weight: 600;
+  padding: 2px 10px; border-radius: 999px; background: #000c; color: #fff; pointer-events: none;
+}
+.detail-cols { display: flex; flex-direction: column; gap: 16px; }
+.detail-text { display: flex; flex-direction: column; gap: 14px; min-width: 0; flex: 1; }
+@media (min-width: 700px) {
+  .detail-cols { flex-direction: row; align-items: flex-start; }
+  .detail-cols .mini { width: 240px; flex: 0 0 240px; margin: 0; }
+}
+.sheet-head .btn.icon:disabled { opacity: .35; cursor: default; }
+
+/* ---------- zoom (full-screen image) ---------- */
+dialog.zoom {
+  padding: 0; border: 0; margin: 0; background: #000; color: #fff;
+  width: 100vw; height: 100dvh; max-width: none; max-height: none; cursor: zoom-out;
+}
+dialog.zoom[open] { display: grid; place-items: center; }
+dialog.zoom::backdrop { background: #000; }
+dialog.zoom img { max-width: 100%; max-height: 100dvh; object-fit: contain; }
+.zoom-cap { position: fixed; left: 50%; bottom: max(14px, env(safe-area-inset-bottom)); transform: translateX(-50%); background: #000b; padding: 4px 14px; border-radius: 999px; font-size: 14px; }
+
+/* ---------- touch: bigger targets ---------- */
+@media (pointer: coarse) {
+  .pin { width: 38px; height: 38px; padding: 4px; }
+  .pin::after { content: ""; position: absolute; inset: -8px; border-radius: 50%; } /* larger hit area */
+  .tick { flex-basis: 60px; }
+}
+
+/* ---------- landscape phone: map left (full height), list right ---------- */
+@media (orientation: landscape) and (max-height: 520px) {
+  body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+  .top { padding-top: 6px; padding-bottom: 6px; min-height: 48px; }
+  .brand { font-size: 15px; }
+  .brand img { width: 24px; height: 24px; }
+  .btn { min-height: 34px; }
+  .btn.icon { width: 34px; }
+
+  .layout {
+    grid-template-columns: auto minmax(0, 1fr); gap: 12px; align-items: start;
+    padding: 8px 12px 12px; max-width: none;
+  }
+  .map-col { position: sticky; top: 56px; }
+  .map-wrap { width: calc(100dvh - 68px); max-width: none; height: calc(100dvh - 68px); }
+  .legend, .foot { display: none; }
+  .pick-banner { position: absolute; z-index: 5; left: 8px; right: 8px; top: 8px; margin: 0; font-size: 14px; }
+
+  .maps { padding: 0 0 8px; }
+  .map-chip { width: 96px; height: 40px; }
+  .map-chip .nm { font-size: 13px; left: 8px; bottom: 3px; }
+  .filters { padding: 8px; gap: 8px; }
+  .seg button { padding: 4px 0; }
+  select, input:not([type=checkbox]):not([type=file]) { min-height: 34px; padding: 4px 8px; }
+  .count { margin: 8px 2px 4px; }
+  .card-main { padding: 8px 10px; }
+  .ab { width: 40px; height: 40px; }
+
+  /* detail = full screen, pair fills the height */
+  dialog.sheet.detail {
+    width: 100vw; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0;
+    padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);
+  }
+  dialog.sheet.detail .sheet-head { padding: 6px 12px; gap: 8px; }
+  dialog.sheet.detail .sheet-head h2 { font-size: 16px; }
+  dialog.sheet.detail .head-ic { width: 34px; height: 34px; padding: 4px; }
+  dialog.sheet.detail .sheet-body { padding: 8px 12px; gap: 12px; }
+  dialog.sheet.detail .sheet-foot { padding: 6px 12px; padding-bottom: max(6px, env(safe-area-inset-bottom)); }
+  .pair { gap: 8px; }
+  .pair-fig img, .pair-empty { aspect-ratio: auto; height: calc(100dvh - 128px); object-fit: contain; }
+  .detail-cols { flex-direction: row; align-items: flex-start; }
+  .detail-cols .mini { width: 200px; flex: 0 0 200px; margin: 0; }
+
+  dialog.sheet:not(.detail) { width: min(640px, 100%); margin: auto; border-radius: 16px; max-height: calc(100dvh - 16px); border-bottom: 1px solid var(--line); }
+}

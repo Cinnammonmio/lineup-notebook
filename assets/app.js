@@ -222,6 +222,8 @@ function matches(l, ignoreMap) {
   return true;
 }
 const visible = () => all().filter((l) => matches(l));
+const byListOrder = (a, b) =>
+  (a.site || '~').localeCompare(b.site || '~') || (a.title || '').localeCompare(b.title || '', 'th');
 
 /* ---------- persistence ---------- */
 
@@ -401,8 +403,7 @@ function chips(l) {
 function renderList() {
   const ul = $('#list');
   const total = all().filter((l) => norm(l.map) === norm(state.map)).length;
-  const list = visible().sort((a, b) =>
-    (a.site || '~').localeCompare(b.site || '~') || (a.title || '').localeCompare(b.title || '', 'th'));
+  const list = visible().sort(byListOrder);
   $('#count').textContent = total ? `แสดง ${list.length} จาก ${total} lineup บน ${state.map}` : '';
   ul.replaceChildren();
 
@@ -477,7 +478,8 @@ function mediaEl({ src, caption }) {
   } else if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(src)) {
     node = el('video', { src: safeHref(src), controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
   } else if (/\.(png|jpe?g|webp|gif|avif|bmp)(\?|#|$)/i.test(src) || /^(media\/|data:image\/)/i.test(src)) {
-    node = el('a', { href: safeHref(src), target: '_blank', rel: 'noopener' }, el('img', { src: safeHref(src), alt: caption || '', loading: 'lazy' }));
+    node = el('button', { type: 'button', class: 'zoomable', onclick: () => zoom(src, caption), 'aria-label': 'ขยายรูป' },
+      el('img', { src: safeHref(src), alt: caption || '', loading: 'lazy' }));
   } else {
     node = el('a', { class: 'link', href: safeHref(src), target: '_blank', rel: 'noopener noreferrer', text: src });
   }
@@ -496,6 +498,42 @@ function miniMap(l) {
 
 const section = (title, body) => el('div', { class: 'sec' }, el('h3', { text: title }), body);
 
+const IMG_RE = /\.(png|jpe?g|webp|gif|avif|bmp)(\?|#|$)|^data:image\//i;
+const STAND_RE = /ยืน|stand/i;
+const AIM_RE = /เล็ง|aim|ปา|throw/i;
+
+/** Split media into the stand/aim image pair and everything else. */
+function splitMedia(list) {
+  const imgs = list.filter((m) => IMG_RE.test(m.src));
+  const tagged = (re, suffix) => imgs.find((m) => re.test(m.caption || '') || new RegExp(`-${suffix}\\.\\w+$`, 'i').test(m.src));
+  let stand = tagged(STAND_RE, 'stand');
+  let aim = tagged(AIM_RE, 'aim');
+  if (!stand && !aim && imgs.length) { [stand, aim] = imgs; }
+  const rest = list.filter((m) => m !== stand && m !== aim);
+  return { stand, aim, rest };
+}
+
+function pairFig(m, label) {
+  return el('figure', { class: 'pair-fig' },
+    m
+      ? el('button', { type: 'button', class: 'zoomable', onclick: () => zoom(m.src, label), 'aria-label': 'ขยายรูป' + label },
+        el('img', { src: safeHref(m.src), alt: label }))
+      : el('div', { class: 'pair-empty', text: 'ยังไม่มีรูป' + label }),
+    el('figcaption', { text: label }));
+}
+
+function zoom(src, caption) {
+  const z = $('#zoom');
+  z.replaceChildren(el('img', { src: safeHref(src), alt: caption || '' }), caption ? el('span', { class: 'zoom-cap', text: caption }) : null);
+  z.showModal();
+}
+
+function neighbour(id, dir) {
+  const list = visible().sort(byListOrder);
+  const i = list.findIndex((x) => x.id === id);
+  return i < 0 || list.length < 2 ? null : list[(i + dir + list.length) % list.length];
+}
+
 function openDetail(id) {
   const l = all().find((x) => x.id === id);
   if (!l) { toast('ไม่พบ lineup นี้'); return; }
@@ -508,22 +546,35 @@ function openDetail(id) {
   const icon = iconFor(l);
   const done = !!state.practiced[l.id];
   const media = (l.media || []).map(parseMedia).filter(Boolean);
+  const { stand, aim, rest } = splitMedia(media);
+  const showPair = stand || aim || l.from;
+  const prev = neighbour(id, -1);
+  const next = neighbour(id, 1);
+  const navBtn = (t, label, target) => el('button', {
+    type: 'button', class: 'btn icon', 'aria-label': label, title: label, disabled: !target,
+    onclick: () => target && openDetail(target.id),
+  }, t);
 
   d.replaceChildren(el('div', { class: 'sheet-inner' },
     el('header', { class: 'sheet-head' },
       icon ? el('img', { class: 'head-ic', src: icon, alt: '' }) : null,
       el('div', { class: 'grow' },
         el('h2', { text: l.title || '(ไม่มีชื่อ)' }),
-        el('div', { class: 'sub', text: [l.agent, l.ability, l.map].filter(Boolean).join(' · ') })),
+        el('div', { class: 'sub', text: [l.agent, l.ability, l.site && 'ไซต์ ' + l.site, l.throw].filter(Boolean).join(' · ') })),
+      navBtn('‹', 'lineup ก่อนหน้า', prev),
+      navBtn('›', 'lineup ถัดไป', next),
       el('button', { type: 'button', class: 'btn icon', 'aria-label': 'ปิด', onclick: () => d.close() }, '✕')),
     el('div', { class: 'sheet-body' },
-      el('div', { class: 'chips' }, chips(l)),
-      l.from || l.to ? miniMap(l) : null,
-      l.steps ? section('วิธีทำ', el('div', { class: 'steps', text: l.steps })) : null,
-      l.throw ? section('การปา / ยิง', el('p', { text: l.throw })) : null,
-      media.length ? section('รูป / คลิป', el('div', { class: 'gallery' }, media.map(mediaEl))) : null,
-      !l.steps && !l.throw && !media.length
-        ? el('p', { class: 'muted', text: 'ยังไม่มีรายละเอียด กด “แก้ไข” เพื่อเพิ่มวิธีทำหรือรูป' }) : null),
+      showPair ? el('div', { class: 'pair' }, pairFig(stand, 'จุดยืน'), pairFig(aim, 'จุดเล็ง')) : null,
+      el('div', { class: 'detail-cols' },
+        el('div', { class: 'detail-text' },
+          el('div', { class: 'chips' }, chips(l)),
+          l.steps ? section('วิธีทำ', el('div', { class: 'steps', text: l.steps })) : null,
+          l.throw ? section('การปา / ยิง', el('p', { text: l.throw })) : null,
+          !l.steps && !l.throw && !media.length
+            ? el('p', { class: 'muted', text: 'ยังไม่มีรายละเอียด กด “แก้ไข” เพื่อเพิ่มวิธีทำหรือรูป' }) : null),
+        l.from || l.to ? miniMap(l) : null),
+      rest.length ? section('คลิป / รูปอื่น ๆ', el('div', { class: 'gallery' }, rest.map(mediaEl))) : null),
     el('footer', { class: 'sheet-foot' },
       el('button', {
         type: 'button', class: 'btn' + (done ? ' ok' : ''),
@@ -827,11 +878,27 @@ function bindUi() {
     else if (m && norm(m) !== norm(state.map)) setMap(m);
   });
 
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.pick) cancelPick(); });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state.pick) cancelPick();
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && $('#detail').open && !$('#zoom').open && state.selected) {
+      const n = neighbour(state.selected, e.key === 'ArrowLeft' ? -1 : 1);
+      if (n) openDetail(n.id);
+    }
+  });
+  $('#zoom').addEventListener('click', () => $('#zoom').close());
+}
+
+const LANDSCAPE_PHONE = matchMedia('(orientation: landscape) and (max-height: 520px)');
+function placeMapChips() {
+  const maps = $('#maps');
+  if (LANDSCAPE_PHONE.matches) $('.list-col').prepend(maps);
+  else $('main.layout').before(maps);
 }
 
 async function init() {
   bindUi();
+  placeMapChips();
+  LANDSCAPE_PHONE.addEventListener('change', placeMapChips);
   const [maps, agents, base] = await Promise.all([
     loadApi(MAPS_URL, LS.maps, pickMaps),
     loadApi(AGENTS_URL, LS.agents, pickAgents),
