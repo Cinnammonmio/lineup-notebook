@@ -1,0 +1,136 @@
+<!doctype html>
+<html lang="th">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0f1218">
+  <meta name="description" content="สมุดจด lineup Valorant ส่วนตัว ใช้ได้ทั้งคอมและมือถือ">
+  <title>สมุด Lineup</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="assets/icon-180.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Lineup">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="assets/style.css">
+</head>
+<body>
+  <header class="top">
+    <div class="brand"><img src="assets/icon.svg" alt=""><span>สมุด Lineup</span></div>
+    <div class="top-actions">
+      <button id="unsynced" class="unsynced" type="button" hidden></button>
+      <button id="btnAdd" class="btn primary" type="button">+ เพิ่ม</button>
+      <button id="btnMenu" class="btn icon" type="button" aria-label="เมนู" aria-haspopup="true" aria-expanded="false">⋯</button>
+    </div>
+    <div id="menu" class="menu" hidden>
+      <button type="button" data-act="export">ส่งออก lineups.json</button>
+      <button type="button" data-act="import">นำเข้าไฟล์ JSON</button>
+      <button type="button" data-act="refresh">โหลดข้อมูลแมพ/เอเจนต์ใหม่</button>
+      <button type="button" data-act="reset" class="danger">ล้างการแก้ไขในเครื่องนี้</button>
+    </div>
+  </header>
+
+  <nav id="maps" class="maps" aria-label="เลือกแมพ"></nav>
+
+  <main class="layout">
+    <section class="map-col">
+      <div id="pickBanner" class="pick-banner" hidden></div>
+      <div id="mapWrap" class="map-wrap">
+        <img id="mapImg" alt="" draggable="false">
+        <svg id="mapSvg" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
+        <div id="pins" class="pins"></div>
+        <div id="mapNoImg" class="map-noimg" hidden>ไม่มีรูปมินิแมพ (ออฟไลน์หรือชื่อแมพไม่ตรง)</div>
+      </div>
+      <p class="legend">
+        <span><i class="dot atk"></i>บุก</span>
+        <span><i class="dot def"></i>รับ</span>
+        <span>● จุดยืน → ไอคอน = จุดที่สกิลตก</span>
+      </p>
+    </section>
+
+    <section class="list-col">
+      <div class="filters">
+        <div id="agents" class="agent-row" aria-label="กรองเอเจนต์"></div>
+        <div class="seg" id="side" role="group" aria-label="ฝั่ง">
+          <button type="button" data-v="all" class="on">ทั้งหมด</button>
+          <button type="button" data-v="attack">บุก</button>
+          <button type="button" data-v="defense">รับ</button>
+        </div>
+        <div class="row">
+          <select id="site" aria-label="ไซต์"></select>
+          <select id="type" aria-label="ประเภท"></select>
+        </div>
+        <div class="row">
+          <input id="q" type="search" placeholder="ค้นหาชื่อ สกิล แท็ก…" aria-label="ค้นหา">
+          <label class="check"><input type="checkbox" id="onlyTodo"> ยังไม่ซ้อม</label>
+        </div>
+      </div>
+      <div id="count" class="count"></div>
+      <ul id="list" class="list"><li class="empty">กำลังโหลด…</li></ul>
+    </section>
+  </main>
+
+  <footer class="foot">
+    สมุด Lineup เป็นโปรเจกต์ส่วนตัว ไม่ได้รับการรับรองจาก Riot Games และไม่ได้สะท้อนความเห็นของ Riot Games
+    · ภาพแมพ/เอเจนต์จาก <a href="https://valorant-api.com" target="_blank" rel="noopener">valorant-api.com</a>
+  </footer>
+
+  <dialog id="detail" class="sheet" aria-label="รายละเอียด lineup"></dialog>
+
+  <dialog id="editor" class="sheet" aria-labelledby="editTitle">
+    <form id="editForm" novalidate>
+      <header class="sheet-head">
+        <h2 id="editTitle" class="grow">เพิ่ม lineup</h2>
+        <button type="button" class="btn icon" data-close aria-label="ปิด">✕</button>
+      </header>
+      <div class="sheet-body form">
+        <label>ชื่อ lineup
+          <input name="title" required placeholder="เช่น Recon A Main จากสปอว์น" autocomplete="off">
+        </label>
+        <div class="grid2">
+          <label>แมพ<select name="map" required></select></label>
+          <label>เอเจนต์<input name="agent" list="agentList" placeholder="เช่น Sova" autocomplete="off"></label>
+          <label>สกิล<input name="ability" list="abilityList" placeholder="เช่น Recon Bolt" autocomplete="off"></label>
+          <label>ฝั่ง<select name="side"><option value="attack">บุก</option><option value="defense">รับ</option></select></label>
+          <label>ไซต์<select name="site"></select></label>
+          <label>ประเภท<select name="type"></select></label>
+        </div>
+        <div class="pos-row">
+          <span>จุดยืน: <b id="posFrom" class="no">ยังไม่ตั้ง</b></span>
+          <span>จุดตก: <b id="posTo" class="no">ยังไม่ตั้ง</b></span>
+          <button type="button" class="btn sm" id="btnRepick">เลือกตำแหน่งบนแมพ</button>
+        </div>
+        <label>วิธีทำ (ทีละขั้น)
+          <textarea name="steps" rows="4" placeholder="1. ยืนชิดมุมกล่องซ้าย&#10;2. เล็งเป้าไว้ที่ปลายเสา&#10;3. ชาร์จ 2 ขีด ปาไป"></textarea>
+        </label>
+        <label>การปา / ยิง
+          <input name="throw" placeholder="เช่น กระโดดแล้วปา, ชาร์จเต็ม เด้ง 1 ครั้ง" autocomplete="off">
+        </label>
+        <label>รูป / คลิป (บรรทัดละ 1 อัน ใส่คำอธิบายต่อท้ายด้วย | ได้)
+          <textarea name="media" rows="3" placeholder="media/ascent/sova-a-stand.jpg | จุดยืน&#10;media/ascent/sova-a-aim.jpg | จุดเล็ง&#10;https://youtu.be/xxxxxxxxxxx?t=42"></textarea>
+        </label>
+        <label>แท็ก (คั่นด้วยจุลภาค ,)
+          <input name="tags" placeholder="เช่น ใช้บ่อย, one-way" autocomplete="off">
+        </label>
+        <p class="hint">บันทึกแล้วจะเก็บในเบราว์เซอร์เครื่องนี้ก่อน กด “ส่งออก lineups.json” แล้วเอาไฟล์ไปแทน data/lineups.json ใน repo เพื่อให้ทุกเครื่องเห็น</p>
+      </div>
+      <footer class="sheet-foot">
+        <button type="button" class="btn danger" id="btnDelete">ลบ</button>
+        <span class="grow"></span>
+        <button type="button" class="btn" data-close>ยกเลิก</button>
+        <button type="submit" class="btn primary">บันทึก</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <datalist id="agentList"></datalist>
+  <datalist id="abilityList"></datalist>
+  <input type="file" id="importFile" accept="application/json,.json" hidden>
+  <div id="toast" class="toast" popover="manual" role="status"></div>
+
+  <script src="assets/app.js" defer></script>
+</body>
+</html>
