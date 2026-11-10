@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.7.3';
+const APP_VERSION = '1.8.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -39,7 +39,7 @@ const TYPES = [
 const TYPE_LABEL = Object.fromEntries(TYPES);
 const SIDE_LABEL = { attack: 'บุก', defense: 'รับ' };
 const SITES = ['A', 'B', 'C', 'Mid'];
-const FIELDS = ['id', 'kind', 'title', 'map', 'agent', 'ability', 'side', 'site', 'type', 'from', 'to', 'steps', 'throw', 'media', 'layout', 'items', 'tags', 'example'];
+const FIELDS = ['id', 'kind', 'title', 'map', 'agent', 'ability', 'side', 'site', 'type', 'from', 'to', 'steps', 'throw', 'media', 'layout', 'items', 'smokes', 'tags', 'example'];
 
 /* ---------- helpers ---------- */
 
@@ -122,6 +122,7 @@ const state = {
   selected: null,
   plan: null,
   hoverPlan: null,
+  smokePick: null,
   tab: 'lineups',
   pick: null,
   editing: null,
@@ -461,9 +462,13 @@ function renderMap() {
     lineEls(l, cls, svg, pins, true, plan ? plan.items.indexOf(l.id) + 1 : 0);
   }
 
+  // smokes placed directly in a plan (no lineup needed)
+  const smokes = state.smokePick ? state.planEdit?.smokes || [] : plan?.smokes || [];
+  for (const sm of smokes) pins.prepend(smokeEl(sm));
+
   const p = state.pick;
   if (p?.draft?.from) svg.append(svgEl('circle', { cx: p.draft.from.x * 1000, cy: p.draft.from.y * 1000, r: 13, class: 'tmp' }));
-  $('#mapWrap').classList.toggle('picking', !!p);
+  $('#mapWrap').classList.toggle('picking', !!p || !!state.smokePick);
 }
 
 function hover(id) {
@@ -608,10 +613,13 @@ function renderPlanList(ul, cnt) {
           el('span', { class: 'card-title', text: pl.title || '(แผนไม่มีชื่อ)' }),
           el('span', { class: 'card-meta' },
             pl.side ? el('i', { class: 'side-dot ' + pl.side, title: SIDE_LABEL[pl.side] }) : null,
-            [pl.site && 'ไซต์ ' + pl.site, `${items.length} lineup`].filter(Boolean).join(' · ')),
+            [pl.site && 'ไซต์ ' + pl.site, `${items.length} lineup`, pl.smokes?.length && `${pl.smokes.length} สโมก`].filter(Boolean).join(' · ')),
           el('span', { class: 'plan-icons' }, items.map((l, i) => {
             const ic = iconFor(l), col = colorFor(l);
             return el('span', { class: 'plan-ic', title: `${i + 1}. ${l.title}`, style: col ? `--ag:${col}` : null }, ic ? el('img', { src: ic, alt: '' }) : String(i + 1));
+          }), (pl.smokes || []).map((sm) => {
+            const ic = abilityIcon(sm.agent, sm.ability), col = agentOf(sm.agent)?.color;
+            return el('span', { class: 'plan-ic smoke', title: `สโมก: ${sm.agent} · ${sm.ability}`, style: col ? `--ag:${col}` : null }, ic ? el('img', { src: ic, alt: '' }) : '☁');
           })),
           pl._local ? el('span', { class: 'chips' }, el('span', { class: 'chip warn', text: 'ยังไม่ export' })) : null)),
       el('button', { type: 'button', class: 'tick', title: 'แก้ไขแผน', 'aria-label': 'แก้ไขแผน', onclick: () => openPlanEditor(pl) }, '✎')));
@@ -636,7 +644,21 @@ function renderList() {
       el('button', { type: 'button', class: 'reset-ag', onclick: () => openPlanEditor(plan) }, '✎ แก้แผน'),
       el('button', { type: 'button', class: 'reset-ag', onclick: () => { state.plan = null; state.tab = 'plans'; state.selected = null; render(); } }, '✕ ออก'));
     ul.replaceChildren(...list.map((l, i) => lineupCard(l, i + 1)));
-    if (!list.length) ul.append(el('li', { class: 'empty' }, 'แผนนี้ยังไม่มี lineup — กด ✎ แก้แผน เพื่อเลือก'));
+    const groups = new Map();
+    for (const sm of plan.smokes || []) { const k = sm.agent + '|' + sm.ability; groups.set(k, [...(groups.get(k) || []), sm]); }
+    for (const [k, arr] of groups) {
+      const [agent, ability] = k.split('|');
+      const col = agentOf(agent)?.color, ic = abilityIcon(agent, ability), face = agentOf(agent)?.icon;
+      ul.append(el('li', { class: 'card smoke-row', style: col ? `--ag:${col}` : null },
+        el('span', { class: 'card-main' },
+          el('span', { class: 'card-n', text: '☁' }),
+          face ? el('img', { class: 'card-agent', src: face, alt: agent }) : null,
+          el('span', { class: 'ab' }, ic ? el('img', { src: ic, alt: '' }) : '☁'),
+          el('span', { class: 'card-body' },
+            el('span', { class: 'card-title', text: `สโมก ${ability}` + (arr.length > 1 ? ` ×${arr.length}` : '') }),
+            el('span', { class: 'card-meta', text: `${agent} · วางจากแมพ (ไม่มี lineup)` })))));
+    }
+    if (!list.length && !(plan.smokes || []).length) ul.append(el('li', { class: 'empty' }, 'แผนนี้ยังไม่มี lineup — กด ✎ แก้แผน เพื่อเลือก'));
     return;
   }
   const picked = [...state.f.agents].map((k) => agentOf(k)?.name || k);
@@ -668,7 +690,7 @@ function openPlanEditor(src) {
   const exists = !!src?.id && plans().some((x) => x.id === src.id);
   const d = { kind: 'plan', side: state.f.side !== 'all' ? state.f.side : 'attack', map: state.map, items: [], ...src };
   delete d._local;
-  state.planEdit = { draft: d, exists, items: [...(d.items || [])] };
+  state.planEdit = { draft: d, exists, items: [...(d.items || [])], smokes: (d.smokes || []).map((x) => ({ ...x })), smokeAgent: null, smokeAbility: null };
   const f = $('#planForm').elements;
   $('#planTitle').textContent = exists ? 'แก้ไขแผน' : 'สร้างแผน';
   f.title.value = d.title || '';
@@ -677,6 +699,90 @@ function openPlanEditor(src) {
   f.steps.value = d.steps || '';
   $('#planDelete').hidden = !exists;
   renderPlanPicker();
+  renderPlanSmokes();
+  $('#planEditor').showModal();
+}
+
+/* ---------- smokes in a plan: placed on the map, no lineup needed ---------- */
+
+const SMOKE_RE = /smoke|dark cover|nebula|cloudburst|cove|cascade|high tide|toxic screen|poison cloud|ruse|cyber cage/i;
+function abilityIcon(agent, ability) {
+  const a = agentOf(agent);
+  return a?.abilities.find((x) => norm(x.name) === norm(ability))?.icon || a?.icon || null;
+}
+function smokeEl(sm) {
+  const col = agentOf(sm.agent)?.color, ic = abilityIcon(sm.agent, sm.ability);
+  return el('span', { class: 'smoke-pin', title: `สโมก ${sm.agent} · ${sm.ability}`, style: `left:${sm.x * 100}%;top:${sm.y * 100}%` + (col ? `;--ag:${col}` : '') },
+    ic ? el('img', { src: ic, alt: '' }) : '☁');
+}
+
+function renderPlanSmokes() {
+  const pe = state.planEdit;
+  const ctrl = (a) => (/controller/i.test(a.role) ? 0 : 1);
+  const agents = [...state.agents].sort((a, b) => ctrl(a) - ctrl(b) || a.name.localeCompare(b.name));
+  if (!pe.smokeAgent) pe.smokeAgent = agents[0]?.name || null;
+  const ag = agentOf(pe.smokeAgent);
+  const abilities = ag?.abilities || [];
+  if (!abilities.some((x) => x.name === pe.smokeAbility)) pe.smokeAbility = (abilities.find((x) => SMOKE_RE.test(x.name)) || abilities[0])?.name || null;
+
+  $('#planSmokes').replaceChildren(...(pe.smokes.length ? pe.smokes.map((sm, i) => {
+    const col = agentOf(sm.agent)?.color, ic = abilityIcon(sm.agent, sm.ability);
+    return el('span', { class: 'smoke-chip', style: col ? `--ag:${col}` : null },
+      ic ? el('img', { src: ic, alt: '' }) : '☁', el('span', { text: `${sm.agent} · ${sm.ability}` }),
+      el('button', { type: 'button', 'aria-label': 'เอาออก', onclick: () => { pe.smokes.splice(i, 1); renderPlanSmokes(); } }, '✕'));
+  }) : [el('span', { class: 'muted-s', text: 'ยังไม่มีสโมก — เลือกเอเจนต์ / สกิล แล้วแตะแมพเพื่อวาง' })]));
+
+  $('#smokeAgents').replaceChildren(...agents.map((a) => pickBtn('pk-ag', a.name === pe.smokeAgent, a.name,
+    () => { pe.smokeAgent = a.name; pe.smokeAbility = null; renderPlanSmokes(); }, el('img', { src: a.icon, alt: '' }))));
+  $('#smokeAbilities').replaceChildren(...abilities.map((x) => pickBtn('pk-ab', x.name === pe.smokeAbility, x.name,
+    () => { pe.smokeAbility = x.name; renderPlanSmokes(); }, x.icon ? el('img', { src: x.icon, alt: '' }) : null, el('span', { text: x.name }))));
+  $('#smokePlace').disabled = !pe.smokeAgent || !pe.smokeAbility || !mapOf(pe.draft.map);
+  scrollIntoRowIfHidden($('#smokeAgents'), $('#smokeAgents .on'));
+}
+
+function readPlanForm() {
+  const f = $('#planForm').elements;
+  Object.assign(state.planEdit.draft, { title: f.title.value, side: f.side.value, site: f.site.value, steps: f.steps.value });
+}
+
+function startSmokePick() {
+  const pe = state.planEdit;
+  readPlanForm();
+  state.smokePick = { agent: pe.smokeAgent, ability: pe.smokeAbility, added: 0 };
+  $('#planEditor').close();
+  if (norm(pe.draft.map) !== norm(state.map)) { state.map = canonMap(pe.draft.map) || pe.draft.map; }
+  render();
+  updateSmokeBanner();
+}
+
+function updateSmokeBanner() {
+  const b = $('#pickBanner');
+  const sp = state.smokePick;
+  if (!sp) { b.hidden = true; b.replaceChildren(); return; }
+  b.hidden = false;
+  b.replaceChildren(
+    el('span', { class: 'step', text: '☁' }),
+    el('span', { class: 'grow', text: `วางสโมก ${sp.ability}: แตะบนแมพ (หลายจุดได้) · วางแล้ว ${sp.added}` }),
+    el('button', { type: 'button', class: 'btn sm', disabled: !sp.added, onclick: () => { state.planEdit.smokes.pop(); sp.added--; renderMap(); updateSmokeBanner(); } }, '↶'),
+    el('button', { type: 'button', class: 'btn sm primary', onclick: finishSmokePick }, 'เสร็จ'));
+}
+
+function finishSmokePick() {
+  state.smokePick = null;
+  updateSmokeBanner();
+  renderMap();
+  resumePlanEditor();
+}
+
+function resumePlanEditor() {
+  const d = state.planEdit.draft;
+  const f = $('#planForm').elements;
+  f.title.value = d.title || '';
+  f.side.value = d.side || 'attack';
+  f.site.value = d.site || '';
+  f.steps.value = d.steps || '';
+  renderPlanPicker();
+  renderPlanSmokes();
   $('#planEditor').showModal();
 }
 
@@ -720,7 +826,8 @@ function bindPlans() {
   f.title.addEventListener('input', () => { f.title.dataset.touched = f.title.value.trim() ? '1' : ''; });
   f.side.addEventListener('change', () => { renderPlanPicker(); if (!f.title.dataset.touched) f.title.value = autoPlanTitle(); });
   f.site.addEventListener('change', () => { if (!f.title.dataset.touched) f.title.value = autoPlanTitle(); });
-  dlg.addEventListener('close', () => { delete f.title.dataset.touched; });
+  dlg.addEventListener('close', () => { if (!state.smokePick) delete f.title.dataset.touched; });
+  $('#smokePlace').addEventListener('click', startSmokePick);
   $('#planDelete').addEventListener('click', () => {
     const d = state.planEdit?.draft;
     if (!d?.id || !confirm(`ลบแผน “${d.title || ''}”? (lineup ในแผนไม่ถูกลบ)`)) return;
@@ -734,9 +841,9 @@ function bindPlans() {
   $('#planForm').addEventListener('submit', (e) => {
     e.preventDefault();
     const pe = state.planEdit;
-    if (!pe.items.length) { toast('เลือก lineup อย่างน้อย 1 อัน'); return; }
+    if (!pe.items.length && !pe.smokes.length) { toast('เลือก lineup หรือวางสโมกอย่างน้อย 1 อัน'); return; }
     const picked = pe.items.map((id) => all().find((l) => l.id === id)).filter(Boolean);
-    const d = { ...pe.draft, kind: 'plan', title: f.title.value.trim() || autoPlanTitle(), side: f.side.value, site: f.site.value || commonSite(picked), steps: f.steps.value.trim(), items: pe.items };
+    const d = { ...pe.draft, kind: 'plan', title: f.title.value.trim() || autoPlanTitle(), side: f.side.value, site: f.site.value || commonSite(picked), steps: f.steps.value.trim(), items: pe.items, smokes: pe.smokes.length ? pe.smokes : undefined };
     d.id ||= newId();
     saveLineup(d);
     dlg.close();
@@ -1789,10 +1896,18 @@ function cancelPick() {
 }
 
 function onMapClick(e) {
-  const p = state.pick;
-  if (!p) return;
   const r = e.currentTarget.getBoundingClientRect();
   const pt = { x: round3((e.clientX - r.left) / r.width), y: round3((e.clientY - r.top) / r.height) };
+  const sp = state.smokePick;
+  if (sp) {
+    state.planEdit.smokes.push({ agent: sp.agent, ability: sp.ability, ...pt });
+    sp.added++;
+    renderMap();
+    updateSmokeBanner();
+    return;
+  }
+  const p = state.pick;
+  if (!p) return;
   p.draft.map = state.map;
   if (p.step === 'from') {
     p.draft.from = pt;
@@ -2190,6 +2305,7 @@ function bindUi() {
 
   window.addEventListener('keydown', (e) => {
     if (e.key === 'Escape' && state.pick) cancelPick();
+    if (e.key === 'Escape' && state.smokePick) finishSmokePick();
     if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && $('#detail').open && !$('#zoom').open && state.selected) {
       const n = neighbour(state.selected, e.key === 'ArrowLeft' ? -1 : 1);
       if (n) openDetail(n.id);

@@ -588,3 +588,19 @@ dialog.annot::backdrop { background: #000; }
 
 .brand-ver { align-self: flex-end; margin-left: 2px; font: 600 11px/1 "Chakra Petch", var(--font); color: var(--muted); letter-spacing: .04em; padding: 2px 6px; border: 1px solid var(--line); border-radius: 999px; }
 .card-agent { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 10px; object-fit: cover; background: #0b0e13; border: 2px solid var(--ag, var(--line)); }
+
+/* ---------- plan smokes ---------- */
+.smoke-pin {
+  position: absolute; transform: translate(-50%, -50%); width: 9%; aspect-ratio: 1; border-radius: 50%;
+  background: color-mix(in srgb, var(--ag, #9aa) 32%, transparent); border: 2px solid var(--ag, #9aa);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--ag, #9aa) 50%, transparent); display: grid; place-items: center; pointer-events: none;
+}
+.smoke-pin img { width: 42%; height: 42%; object-fit: contain; filter: drop-shadow(0 1px 2px #000); }
+.plan-ic.smoke { border-style: dashed; border-radius: 50%; }
+.plan-smokes { display: flex; flex-wrap: wrap; gap: 6px; }
+.smoke-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 6px; border-radius: 999px; border: 1px solid var(--ag, var(--line)); background: color-mix(in srgb, var(--ag, #888) 14%, var(--panel2)); font-size: 13px; color: var(--text); }
+.smoke-chip img { width: 20px; height: 20px; object-fit: contain; }
+.smoke-chip button { border: 0; background: none; color: var(--muted); cursor: pointer; padding: 0 4px; }
+.smoke-row .card-main { cursor: default; }
+.smoke-row .card-n { background: color-mix(in srgb, var(--ag, #888) 40%, transparent); color: #fff; }
+#smokePlace { align-self: flex-start; }
