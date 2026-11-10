@@ -56,6 +56,7 @@
     </section>
 
     <section class="list-col">
+      <div id="tabs" class="tabs" role="tablist" aria-label="Lineup / แผน"></div>
       <div id="agents" class="agent-row" role="group" aria-label="เลือกเอเจนต์ (เลือกได้หลายตัว)"></div>
       <div id="count" class="count"></div>
       <ul id="list" class="list"><li class="empty">กำลังโหลด…</li></ul>
@@ -70,6 +71,38 @@
 
   <dialog id="detail" class="sheet detail" aria-label="รายละเอียด lineup"></dialog>
   <dialog id="zoom" class="zoom" aria-label="รูปขยาย (แตะเพื่อปิด)"></dialog>
+
+  <dialog id="planEditor" class="sheet" aria-labelledby="planTitle">
+    <form id="planForm" class="sheet-inner" novalidate>
+      <header class="sheet-head">
+        <h2 id="planTitle" class="grow">สร้างแผน</h2>
+        <button type="button" class="btn icon" data-close aria-label="ปิด">✕</button>
+      </header>
+      <div class="sheet-body form">
+        <div class="grid3">
+          <label>ฝั่ง<select name="side"><option value="attack">บุก</option><option value="defense">รับ</option></select></label>
+          <label>ไซต์<select name="site"></select></label>
+          <span></span>
+        </div>
+        <label>ชื่อแผน
+          <input name="title" placeholder="ตั้งให้อัตโนมัติ เช่น Post-plant A · บุก" autocomplete="off">
+        </label>
+        <div class="field">
+          <span class="lbl" id="planHint"></span>
+          <div id="planPick" class="plan-pick"></div>
+        </div>
+        <label>โน้ต (จังหวะ / ใครปาอะไรก่อน)
+          <textarea name="steps" rows="3" placeholder="เช่น ปาหลังวางบอม 5 วินาที: 1 → 2 → 3"></textarea>
+        </label>
+      </div>
+      <footer class="sheet-foot">
+        <button type="button" class="btn danger" id="planDelete">ลบแผน</button>
+        <span class="grow"></span>
+        <button type="button" class="btn" data-close>ยกเลิก</button>
+        <button type="submit" class="btn primary">บันทึก</button>
+      </footer>
+    </form>
+  </dialog>
 
   <dialog id="ghDialog" class="sheet" aria-labelledby="ghTitle">
     <form id="ghForm" class="sheet-inner" novalidate>

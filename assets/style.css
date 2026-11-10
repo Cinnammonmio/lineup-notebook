@@ -548,3 +548,36 @@ dialog.annot::backdrop { background: #000; }
 
 /* crop aspect choices (highlight tool, crop mode) */
 .annot-aspect > button:not([data-color]) { font-size: 13px; }
+
+/* ---------- agent colours ---------- */
+.pin[style*="--ag"] { border-color: var(--ag); }
+.st { stroke-width: 3; }
+.st.side-attack { stroke: var(--atk); } .st.side-defense { stroke: var(--def); }
+.card[style*="--ag"] .ab { border-left-color: var(--ag); }
+.ag[style*="--ag"].on { border-color: var(--ag); box-shadow: 0 0 0 1px var(--ag); background: color-mix(in srgb, var(--ag) 18%, var(--panel2)); }
+.ag[style*="--ag"] .n { background: var(--ag); color: #0b0e13; }
+.pin-n { position: absolute; right: -6px; top: -6px; min-width: 18px; height: 18px; padding: 0 4px; border-radius: 999px; background: var(--ag, var(--accent)); color: #0b0e13; font-size: 11px; font-weight: 800; line-height: 18px; text-align: center; box-shadow: 0 0 0 2px #0b0e13; }
+
+/* ---------- tabs: Lineup / แผน ---------- */
+.tabs { display: flex; gap: 4px; flex: 0 0 auto; padding: 2px 0 6px; }
+.tabs button { flex: 1; display: inline-flex; align-items: center; justify-content: center; gap: 6px; height: 32px; border-radius: 9px; border: 1px solid var(--line); background: var(--panel2); color: var(--muted); font-weight: 600; cursor: pointer; }
+.tabs button.on { color: var(--text); border-color: var(--accent); background: color-mix(in srgb, var(--accent) 14%, var(--panel2)); }
+.tabs .n { font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+.plan-head { color: var(--text); font-weight: 600; }
+.card-n { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 50%; display: grid; place-items: center; font-size: 12px; font-weight: 800; background: var(--ag, var(--accent)); color: #0b0e13; }
+.plan-icons { display: flex; gap: 4px; margin-top: 4px; flex-wrap: wrap; }
+.plan-ic { width: 26px; height: 26px; padding: 3px; border-radius: 7px; background: #0b0e13; border: 2px solid var(--ag, var(--line)); display: grid; place-items: center; font-size: 11px; }
+.plan-ic img { width: 100%; height: 100%; object-fit: contain; }
+
+/* ---------- plan editor ---------- */
+#planEditor.sheet { width: min(640px, calc(100% - 32px)); }
+.plan-pick { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 220px), 1fr)); gap: 6px; max-height: 46vh; overflow: auto; padding: 2px; }
+.pp { display: flex; align-items: center; gap: 8px; text-align: left; padding: 6px 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); cursor: pointer; }
+.pp img { width: 30px; height: 30px; padding: 3px; border-radius: 7px; background: #0b0e13; border: 2px solid var(--ag, var(--line)); object-fit: contain; flex: 0 0 auto; }
+.pp.on { border-color: var(--ag, var(--accent)); box-shadow: 0 0 0 1px var(--ag, var(--accent)); background: color-mix(in srgb, var(--ag, var(--accent)) 14%, var(--panel2)); }
+.pp.other { opacity: .55; }
+.pp-n { flex: 0 0 auto; width: 20px; height: 20px; border-radius: 50%; display: grid; place-items: center; font-size: 11px; font-weight: 800; border: 1px dashed var(--line2); }
+.pp.on .pp-n { background: var(--ag, var(--accent)); color: #0b0e13; border: 0; }
+.pp-t { display: flex; flex-direction: column; min-width: 0; }
+.pp-t b { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.pp-t small { font-size: 11px; color: var(--muted); }

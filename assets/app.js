@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.6.0';
+const APP_VERSION = '1.7.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -23,7 +23,7 @@ const LS = {
   gh: 'lp.github.v1',
   fit: 'lp.detailFit',
   pushed: 'lp.pushed.v1',
-  agents: 'lp.api.agents.v1',
+  agents: 'lp.api.agents.v2',
 };
 
 const TYPES = [
@@ -39,7 +39,7 @@ const TYPES = [
 const TYPE_LABEL = Object.fromEntries(TYPES);
 const SIDE_LABEL = { attack: 'บุก', defense: 'รับ' };
 const SITES = ['A', 'B', 'C', 'Mid'];
-const FIELDS = ['id', 'title', 'map', 'agent', 'ability', 'side', 'site', 'type', 'from', 'to', 'steps', 'throw', 'media', 'layout', 'tags', 'example'];
+const FIELDS = ['id', 'kind', 'title', 'map', 'agent', 'ability', 'side', 'site', 'type', 'from', 'to', 'steps', 'throw', 'media', 'layout', 'items', 'tags', 'example'];
 
 /* ---------- helpers ---------- */
 
@@ -120,6 +120,8 @@ const state = {
   map: null,
   f: { agents: new Set([store.get(LS.agent, [])].flat().filter((x) => typeof x === 'string')), side: 'all', site: 'all', type: 'all', q: '', todo: false },
   selected: null,
+  plan: null,
+  tab: 'lineups',
   pick: null,
   editing: null,
 };
@@ -184,6 +186,25 @@ function siteLabels(m, box) {
   }
 }
 
+/** Agent theme colour: the most vivid of valorant-api's background gradient colours, made readable on the dark map. */
+function agentColor(list) {
+  let best = null;
+  for (const hex of list || []) {
+    const m = /^([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})/i.exec(hex || '');
+    if (!m) continue;
+    const [r, g, b] = m.slice(1).map((x) => parseInt(x, 16) / 255);
+    const max = Math.max(r, g, b), min = Math.min(r, g, b), l = (max + min) / 2;
+    const d = max - min, sat = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+    let h = 0;
+    if (d) h = max === r ? ((g - b) / d) % 6 : max === g ? (b - r) / d + 2 : (r - g) / d + 4;
+    const score = sat * (1 - Math.abs(l - 0.55));
+    if (!best || score > best.score) best = { score, h: (h * 60 + 360) % 360, sat };
+  }
+  if (!best) return null;
+  return `hsl(${Math.round(best.h)} ${Math.round(Math.max(0.6, Math.min(0.9, best.sat)) * 100)}% 62%)`;
+}
+const colorFor = (l) => agentOf(l.agent)?.color || null;
+
 function pickAgents(arr) {
   const seen = new Set();
   return arr
@@ -191,6 +212,7 @@ function pickAgents(arr) {
     .map((a) => ({
       name: a.displayName,
       icon: a.displayIcon,
+      color: agentColor(a.backgroundGradientColors),
       role: a.role?.displayName || '',
       abilities: (a.abilities || [])
         .filter((x) => x.slot !== 'Passive' && x.displayName)
@@ -226,7 +248,13 @@ function iconFor(l) {
   return ab?.icon || a.icon;
 }
 
-function all() {
+const isPlan = (x) => x?.kind === 'plan';
+/** Lineups only (plans are stored in the same list, see plans()). */
+const all = () => allItems().filter((x) => !isPlan(x));
+const plans = () => allItems().filter(isPlan);
+const activePlan = () => (state.plan ? plans().find((x) => x.id === state.plan) || null : null);
+
+function allItems() {
   const out = [];
   const seen = new Set();
   for (const b of state.base) {
@@ -251,6 +279,8 @@ const canonMap = (n) => (n ? mapNames().find((x) => norm(x) === norm(n)) || null
 function matches(l, ignoreMap) {
   const f = state.f;
   if (!ignoreMap && norm(l.map) !== norm(state.map)) return false;
+  const plan = activePlan();
+  if (plan) return (plan.items || []).includes(l.id); // a plan shows exactly its lineups
   if (f.agents.size && !f.agents.has(norm(l.agent))) return false;
   if (f.side !== 'all' && l.side !== f.side) return false;
   if (f.site !== 'all' && l.site !== f.site) return false;
@@ -263,6 +293,12 @@ function matches(l, ignoreMap) {
   return true;
 }
 const visible = () => all().filter((l) => matches(l));
+/** Visible lineups in list order (plan order while a plan is open). */
+function sortedVisible() {
+  const plan = activePlan();
+  const list = visible();
+  return plan ? list.sort((a, b) => plan.items.indexOf(a.id) - plan.items.indexOf(b.id)) : list.sort(byListOrder);
+}
 const byListOrder = (a, b) =>
   (a.site || '~').localeCompare(b.site || '~') || (a.title || '').localeCompare(b.title || '', 'th');
 
@@ -306,10 +342,19 @@ function saveLineup(d) {
 }
 
 function deleteLineup(id) {
+  for (const pl of plans()) {
+    if ((pl.items || []).includes(id)) saveLocalPlanItems(pl, pl.items.filter((x) => x !== id));
+  }
   if (state.base.some((b) => b.id === id) || id in store.get(LS.pushed, {})) state.local[id] = { id, _deleted: true };
   else delete state.local[id];
   saveLocal();
   pruneLocal();
+}
+
+function saveLocalPlanItems(pl, items) {
+  const o = { ...pl, items };
+  delete o._local;
+  state.local[pl.id] = clean(o);
 }
 
 /* ---------- hash routing: #/<map>/<id> ---------- */
@@ -357,27 +402,28 @@ function renderMaps() {
   scrollIntoRowIfHidden(box, on);
 }
 
-function lineEls(l, cls, svg, pins, interactive) {
+function lineEls(l, cls, svg, pins, interactive, num) {
   const id = l.id;
+  const col = colorFor(l); // agent colour; the side shows as the start dot's ring
   if (l.from && l.to) {
     svg.append(svgEl('line', {
       x1: l.from.x * 1000, y1: l.from.y * 1000, x2: l.to.x * 1000, y2: l.to.y * 1000,
-      class: 'ln ' + cls, 'data-id': id,
+      class: 'ln ' + cls, 'data-id': id, style: col ? `stroke:${col}` : null,
     }));
   }
-  if (l.from) svg.append(svgEl('circle', { cx: l.from.x * 1000, cy: l.from.y * 1000, r: 11, class: 'st ' + cls, 'data-id': id }));
+  if (l.from) svg.append(svgEl('circle', { cx: l.from.x * 1000, cy: l.from.y * 1000, r: 11, class: 'st ' + cls, 'data-id': id, style: col ? `fill:${col}` : null }));
   if (l.to) {
     const icon = iconFor(l);
     pins.append(el(interactive ? 'button' : 'span', {
       type: interactive ? 'button' : null,
       class: 'pin ' + cls, 'data-id': id,
-      style: `left:${l.to.x * 100}%;top:${l.to.y * 100}%`,
+      style: `left:${l.to.x * 100}%;top:${l.to.y * 100}%` + (col ? `;--ag:${col}` : ''),
       title: l.title || '',
       'aria-label': interactive ? (l.title || 'lineup') : null,
       onclick: interactive ? (e) => { e.stopPropagation(); openDetail(id); } : null,
       onmouseenter: interactive ? () => hover(id) : null,
       onmouseleave: interactive ? () => hover(null) : null,
-    }, icon ? el('img', { src: icon, alt: '' }) : '◆'));
+    }, icon ? el('img', { src: icon, alt: '' }) : '◆', num ? el('span', { class: 'pin-n', text: String(num) }) : null));
   }
 }
 
@@ -395,10 +441,11 @@ function renderMap() {
   siteLabels(m, pins);
 
   const sel = state.selected;
+  const plan = activePlan();
   const list = visible().filter((l) => l.from || l.to).sort((a, b) => (a.id === sel) - (b.id === sel));
   for (const l of list) {
     const cls = 'side-' + (l.side || 'none') + (sel && sel !== l.id ? ' dim' : '') + (sel === l.id ? ' sel' : '');
-    lineEls(l, cls, svg, pins, true);
+    lineEls(l, cls, svg, pins, true, plan ? plan.items.indexOf(l.id) + 1 : 0);
   }
 
   const p = state.pick;
@@ -441,8 +488,10 @@ function renderAgents() {
     const key = norm(a.name);
     const on = state.f.agents.has(key);
     const n = count(a.name);
+    const col = agentOf(a.name)?.color;
     row.append(el('button', {
       type: 'button', class: 'ag' + (on ? ' on' : '') + (n ? ' has' : '') + (a.icon ? '' : ' txt'),
+      style: col ? `--ag:${col}` : null,
       'aria-pressed': String(on), title: a.name, 'aria-label': a.name + (n ? ` (${n})` : ''),
       onclick: () => toggleAgent(key),
     },
@@ -482,11 +531,94 @@ function chips(l) {
   ];
 }
 
+function renderTabs() {
+  const n = plans().filter((x) => norm(x.map) === norm(state.map)).length;
+  $('#tabs').replaceChildren(
+    el('button', { type: 'button', class: state.tab !== 'plans' || state.plan ? 'on' : '', onclick: () => { state.tab = 'lineups'; state.plan = null; render(); } }, 'Lineup'),
+    el('button', { type: 'button', class: state.tab === 'plans' && !state.plan ? 'on' : '', onclick: () => { state.tab = 'plans'; state.plan = null; state.selected = null; render(); } },
+      'แผน', n ? el('span', { class: 'n', text: String(n) }) : null));
+}
+
+function lineupCard(l, num) {
+  const icon = iconFor(l);
+  const done = !!state.practiced[l.id];
+  const col = colorFor(l);
+  return el('li', { class: 'card' + (state.selected === l.id ? ' sel' : ''), 'data-id': l.id, style: col ? `--ag:${col}` : null },
+    el('button', {
+      type: 'button', class: 'card-main',
+      onclick: () => openDetail(l.id),
+      onmouseenter: () => hover(l.id),
+      onmouseleave: () => hover(null),
+    },
+    num ? el('span', { class: 'card-n', text: String(num) }) : null,
+    el('span', { class: 'ab' }, icon ? el('img', { src: icon, alt: '', loading: 'lazy' }) : '◆'),
+    el('span', { class: 'card-body' },
+      el('span', { class: 'card-title', text: l.title || '(ไม่มีชื่อ)' }),
+      el('span', { class: 'card-meta' },
+        l.side ? el('i', { class: 'side-dot ' + l.side, title: SIDE_LABEL[l.side] }) : null,
+        [l.ability || l.agent, l.site && 'ไซต์ ' + l.site, TYPE_LABEL[l.type]].filter(Boolean).join(' · ') || '—'),
+      l.example || l._local ? el('span', { class: 'chips' },
+        l.example ? el('span', { class: 'chip ex', text: 'ตัวอย่าง' }) : null,
+        l._local ? el('span', { class: 'chip warn', text: 'ยังไม่ export' }) : null) : null)),
+    el('button', {
+      type: 'button', class: 'tick' + (done ? ' on' : ''), 'aria-pressed': String(done),
+      title: done ? 'ซ้อมแล้ว (แตะเพื่อยกเลิก)' : 'ทำเครื่องหมายว่าซ้อมแล้ว',
+      'aria-label': 'ซ้อมแล้ว',
+      onclick: () => togglePracticed(l.id),
+    }, '✓'));
+}
+
+function renderPlanList(ul, cnt) {
+  const list = plans().filter((x) => norm(x.map) === norm(state.map)).sort((a, b) => (a.title || '').localeCompare(b.title || '', 'th'));
+  cnt.replaceChildren(
+    el('span', { class: 'grow cnt-text', text: `${list.length} แผนบน ${state.map || '—'}` }),
+    el('button', { type: 'button', class: 'reset-ag', onclick: () => openPlanEditor({ map: state.map }) }, '+ สร้างแผน'));
+  ul.replaceChildren();
+  if (!list.length) {
+    ul.append(el('li', { class: 'empty' },
+      el('span', { text: 'แผน = คอมโบหลาย lineup ที่ใช้ด้วยกัน เช่น post-plant A: molly + nanoswarm' }),
+      el('button', { type: 'button', class: 'btn primary', onclick: () => openPlanEditor({ map: state.map }) }, '+ สร้างแผนแรก')));
+    return;
+  }
+  const byId = new Map(all().map((l) => [l.id, l]));
+  for (const pl of list) {
+    const items = (pl.items || []).map((id) => byId.get(id)).filter(Boolean);
+    ul.append(el('li', { class: 'card plan-card' },
+      el('button', { type: 'button', class: 'card-main', onclick: () => { state.plan = pl.id; state.tab = 'lineups'; state.selected = null; render(); } },
+        el('span', { class: 'card-body' },
+          el('span', { class: 'card-title', text: pl.title || '(แผนไม่มีชื่อ)' }),
+          el('span', { class: 'card-meta' },
+            pl.side ? el('i', { class: 'side-dot ' + pl.side, title: SIDE_LABEL[pl.side] }) : null,
+            [pl.site && 'ไซต์ ' + pl.site, `${items.length} lineup`].filter(Boolean).join(' · ')),
+          el('span', { class: 'plan-icons' }, items.map((l, i) => {
+            const ic = iconFor(l), col = colorFor(l);
+            return el('span', { class: 'plan-ic', title: `${i + 1}. ${l.title}`, style: col ? `--ag:${col}` : null }, ic ? el('img', { src: ic, alt: '' }) : String(i + 1));
+          })),
+          pl._local ? el('span', { class: 'chips' }, el('span', { class: 'chip warn', text: 'ยังไม่ export' })) : null)),
+      el('button', { type: 'button', class: 'tick', title: 'แก้ไขแผน', 'aria-label': 'แก้ไขแผน', onclick: () => openPlanEditor(pl) }, '✎')));
+  }
+}
+
 function renderList() {
   const ul = $('#list');
-  const total = all().filter((l) => norm(l.map) === norm(state.map)).length;
-  const list = visible().sort(byListOrder);
   const cnt = $('#count');
+  renderTabs();
+  const plan = activePlan();
+  if (state.plan && !plan) state.plan = null;
+  $('#agents').hidden = $('#agents').hidden || !!plan || state.tab === 'plans';
+  if (state.tab === 'plans' && !plan) { renderPlanList(ul, cnt); return; }
+
+  const total = all().filter((l) => norm(l.map) === norm(state.map)).length;
+  const list = sortedVisible();
+  if (plan) {
+    cnt.replaceChildren(
+      el('span', { class: 'grow cnt-text plan-head', text: `แผน: ${plan.title || '—'} · ${list.length} lineup` }),
+      el('button', { type: 'button', class: 'reset-ag', onclick: () => openPlanEditor(plan) }, '✎ แก้แผน'),
+      el('button', { type: 'button', class: 'reset-ag', onclick: () => { state.plan = null; state.tab = 'plans'; state.selected = null; render(); } }, '✕ ออก'));
+    ul.replaceChildren(...list.map((l, i) => lineupCard(l, i + 1)));
+    if (!list.length) ul.append(el('li', { class: 'empty' }, 'แผนนี้ยังไม่มี lineup — กด ✎ แก้แผน เพื่อเลือก'));
+    return;
+  }
   const picked = [...state.f.agents].map((k) => agentOf(k)?.name || k);
   const agentName = picked.length ? picked.join(', ') : '';
   const withLineups = [...new Set(all().filter((l) => norm(l.map) === norm(state.map) && l.agent).map((l) => norm(l.agent)))];
@@ -507,33 +639,94 @@ function renderList() {
         state.map ? el('button', { type: 'button', class: 'btn primary', onclick: startAdd }, '+ เพิ่ม lineup แรก') : null));
     return;
   }
+  for (const l of list) ul.append(lineupCard(l));
+}
 
-  for (const l of list) {
-    const icon = iconFor(l);
-    const done = !!state.practiced[l.id];
-    ul.append(el('li', { class: 'card' + (state.selected === l.id ? ' sel' : ''), 'data-id': l.id },
-      el('button', {
-        type: 'button', class: 'card-main',
-        onclick: () => openDetail(l.id),
-        onmouseenter: () => hover(l.id),
-        onmouseleave: () => hover(null),
-      },
-      el('span', { class: 'ab side-' + (l.side || 'none') }, icon ? el('img', { src: icon, alt: '', loading: 'lazy' }) : '◆'),
-      el('span', { class: 'card-body' },
-        el('span', { class: 'card-title', text: l.title || '(ไม่มีชื่อ)' }),
-        el('span', { class: 'card-meta' },
-          l.side ? el('i', { class: 'side-dot ' + l.side, title: SIDE_LABEL[l.side] }) : null,
-          [l.ability || l.agent, l.site && 'ไซต์ ' + l.site, TYPE_LABEL[l.type]].filter(Boolean).join(' · ') || '—'),
-        l.example || l._local ? el('span', { class: 'chips' },
-          l.example ? el('span', { class: 'chip ex', text: 'ตัวอย่าง' }) : null,
-          l._local ? el('span', { class: 'chip warn', text: 'ยังไม่ export' }) : null) : null)),
-      el('button', {
-        type: 'button', class: 'tick' + (done ? ' on' : ''), 'aria-pressed': String(done),
-        title: done ? 'ซ้อมแล้ว (แตะเพื่อยกเลิก)' : 'ทำเครื่องหมายว่าซ้อมแล้ว',
-        'aria-label': 'ซ้อมแล้ว',
-        onclick: () => togglePracticed(l.id),
-      }, '✓')));
-  }
+/* ---------- plans: a combo of lineups used together ---------- */
+
+function openPlanEditor(src) {
+  const exists = !!src?.id && plans().some((x) => x.id === src.id);
+  const d = { kind: 'plan', side: state.f.side !== 'all' ? state.f.side : 'attack', map: state.map, items: [], ...src };
+  delete d._local;
+  state.planEdit = { draft: d, exists, items: [...(d.items || [])] };
+  const f = $('#planForm').elements;
+  $('#planTitle').textContent = exists ? 'แก้ไขแผน' : 'สร้างแผน';
+  f.title.value = d.title || '';
+  f.side.value = d.side || 'attack';
+  fillOptions(f.site, [['', '—'], ...SITES.map((x) => [x, x])], d.site || '');
+  f.steps.value = d.steps || '';
+  $('#planDelete').hidden = !exists;
+  renderPlanPicker();
+  $('#planEditor').showModal();
+}
+
+function renderPlanPicker() {
+  const pe = state.planEdit;
+  const f = $('#planForm').elements;
+  const side = f.side.value;
+  const pool = all().filter((l) => norm(l.map) === norm(pe.draft.map))
+    .sort((a, b) => (a.side === side ? 0 : 1) - (b.side === side ? 0 : 1) || byListOrder(a, b));
+  $('#planHint').textContent = `เลือก lineup บน ${pe.draft.map || '—'} ตามลำดับที่ใช้ (แตะซ้ำเพื่อเอาออก) · เลือกแล้ว ${pe.items.length}`;
+  $('#planPick').replaceChildren(...(pool.length ? pool.map((l) => {
+    const n = pe.items.indexOf(l.id) + 1;
+    const ic = iconFor(l), col = colorFor(l);
+    return el('button', {
+      type: 'button', class: 'pp' + (n ? ' on' : '') + (l.side !== side ? ' other' : ''), style: col ? `--ag:${col}` : null,
+      onclick: () => { if (n) pe.items.splice(n - 1, 1); else pe.items.push(l.id); renderPlanPicker(); if (!f.title.dataset.touched) f.title.value = autoPlanTitle(); },
+    },
+    el('span', { class: 'pp-n', text: n ? String(n) : '' }),
+    ic ? el('img', { src: ic, alt: '' }) : el('span', { text: '◆' }),
+    el('span', { class: 'pp-t' }, el('b', { text: l.title || '(ไม่มีชื่อ)' }), el('small', { text: [l.agent, SIDE_LABEL[l.side]].filter(Boolean).join(' · ') })));
+  }) : [el('p', { class: 'muted', text: 'ยังไม่มี lineup บนแมพนี้' })]));
+}
+
+function autoPlanTitle() {
+  const f = $('#planForm').elements;
+  const items = state.planEdit.items.map((id) => all().find((l) => l.id === id)).filter(Boolean);
+  const type = items.map((l) => l.type).find((t) => t && t !== 'other');
+  return [TYPE_SHORT[type] || 'แผน', f.site.value || commonSite(items)].filter(Boolean).join(' ') + (f.side.value ? ' · ' + SIDE_LABEL[f.side.value] : '');
+}
+/** The site every lineup in the list shares, if any. */
+function commonSite(items) {
+  const sites = [...new Set(items.map((l) => l.site).filter(Boolean))];
+  return sites.length === 1 && items.every((l) => l.site) ? sites[0] : '';
+}
+
+function bindPlans() {
+  const dlg = $('#planEditor');
+  const f = $('#planForm').elements;
+  for (const b of dlg.querySelectorAll('[data-close]')) b.addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+  f.title.addEventListener('input', () => { f.title.dataset.touched = f.title.value.trim() ? '1' : ''; });
+  f.side.addEventListener('change', () => { renderPlanPicker(); if (!f.title.dataset.touched) f.title.value = autoPlanTitle(); });
+  f.site.addEventListener('change', () => { if (!f.title.dataset.touched) f.title.value = autoPlanTitle(); });
+  dlg.addEventListener('close', () => { delete f.title.dataset.touched; });
+  $('#planDelete').addEventListener('click', () => {
+    const d = state.planEdit?.draft;
+    if (!d?.id || !confirm(`ลบแผน “${d.title || ''}”? (lineup ในแผนไม่ถูกลบ)`)) return;
+    deleteLineup(d.id);
+    if (state.plan === d.id) state.plan = null;
+    dlg.close();
+    render();
+    if (ghReady() && gh.cfg.auto) publish({ quiet: true });
+    toast('ลบแผนแล้ว');
+  });
+  $('#planForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const pe = state.planEdit;
+    if (!pe.items.length) { toast('เลือก lineup อย่างน้อย 1 อัน'); return; }
+    const picked = pe.items.map((id) => all().find((l) => l.id === id)).filter(Boolean);
+    const d = { ...pe.draft, kind: 'plan', title: f.title.value.trim() || autoPlanTitle(), side: f.side.value, site: f.site.value || commonSite(picked), steps: f.steps.value.trim(), items: pe.items };
+    d.id ||= newId();
+    saveLineup(d);
+    dlg.close();
+    state.plan = d.id;
+    state.tab = 'lineups';
+    state.selected = null;
+    render();
+    toast(ghReady() && gh.cfg.auto ? 'บันทึกแผนแล้ว — กำลังขึ้น GitHub…' : 'บันทึกแผนในเครื่องแล้ว');
+    if (ghReady() && gh.cfg.auto) publish({ quiet: true });
+  });
 }
 
 function renderUnsynced() {
@@ -557,6 +750,7 @@ function renderUnsynced() {
 function setMap(name) {
   state.map = name;
   state.selected = null;
+  state.plan = null;
   store.set(LS.lastMap, name);
   updateHash();
   render();
@@ -801,7 +995,7 @@ function detailBoard(l, stand, stand2, aim, aim2) {
 }
 
 function neighbour(id, dir) {
-  const list = visible().sort(byListOrder);
+  const list = sortedVisible();
   const i = list.findIndex((x) => x.id === id);
   return i < 0 || list.length < 2 ? null : list[(i + dir + list.length) % list.length];
 }
@@ -1809,7 +2003,7 @@ function download(blob, name) {
 }
 
 async function exportJson() {
-  const items = all().map(clean);
+  const items = allItems().map(clean);
   const json = JSON.stringify(items, null, 2) + '\n';
   const paths = [...new Set(items.flatMap(mediaPaths))].filter((p) => localUrls.has(p));
   if (!paths.length) {
@@ -1857,6 +2051,7 @@ function bindUi() {
     else toast('ส่งขึ้น GitHub แล้ว — เว็บจะอัปเดตใน 1–2 นาที');
   });
   bindGh();
+  bindPlans();
   $('#mapWrap').addEventListener('click', onMapClick);
 
   const menu = $('#menu');
