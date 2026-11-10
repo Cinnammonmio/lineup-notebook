@@ -1,12 +1,13 @@
 'use strict';
 
 /* Service worker สำหรับ ARC
- * - หน้าเว็บ + data/lineups.json: ลองเน็ตก่อน ถ้าไม่มีเน็ตใช้ของในแคช
- * - css/js/รูป (รวมรูปแมพจาก valorant-api): ใช้ของในแคชทันที แล้วอัปเดตเบื้องหลัง
+ * - หน้าเว็บ, css, js, data/lineups.json: ถามเซิร์ฟเวอร์ก่อนเสมอ (ข้ามแคช 10 นาทีของ GitHub Pages)
+ *   ถ้าไม่มีเน็ตใช้ของในแคช → อัปเดตแล้วเห็นทันที
+ * - รูปใน media/ และรูปแมพจาก valorant-api: ใช้ของในแคชทันที แล้วอัปเดตเบื้องหลัง
  * - คลิปวิดีโอ: ไม่แคช โหลดตอนกดดูเท่านั้น (ไฟล์ใหญ่)
  * VERSION ต้องตรงกับ APP_VERSION ใน assets/app.js — เปลี่ยนทุกครั้งที่ออกเวอร์ชันใหม่ (ล้างแคชเก่าให้เอง)
  */
-const VERSION = '1.2.0';
+const VERSION = '1.2.1';
 const SHELL = 'lp-shell-' + VERSION;
 const RUNTIME = 'lp-runtime-' + VERSION;
 const SHELL_FILES = [
@@ -21,7 +22,10 @@ const SHELL_FILES = [
 ];
 
 self.addEventListener('install', (e) => {
-  e.waitUntil(caches.open(SHELL).then((c) => c.addAll(SHELL_FILES)).then(() => self.skipWaiting()));
+  // cache: 'reload' = ignore the browser HTTP cache so a new version never precaches old files
+  e.waitUntil(caches.open(SHELL)
+    .then((c) => c.addAll(SHELL_FILES.map((f) => new Request(f, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', (e) => {
@@ -37,7 +41,8 @@ const isVideo = (req, url) =>
 async function networkFirst(req, cacheName) {
   const cache = await caches.open(cacheName);
   try {
-    const res = await fetch(req);
+    // revalidate with the server (304 when unchanged) instead of trusting the HTTP cache
+    const res = await fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' });
     if (res.ok) cache.put(req, res.clone());
     return res;
   } catch (err) {
@@ -69,10 +74,10 @@ self.addEventListener('fetch', (e) => {
   if (isVideo(req, url)) return; // ปล่อยให้เบราว์เซอร์โหลดเอง ไม่แคช
 
   const same = url.origin === self.location.origin;
-  if (same && (req.mode === 'navigate' || url.pathname.endsWith('/data/lineups.json'))) {
-    e.respondWith(networkFirst(req, SHELL));
+  if (same && /\/media\//.test(url.pathname)) {
+    e.respondWith(staleWhileRevalidate(req, RUNTIME));
   } else if (same) {
-    e.respondWith(staleWhileRevalidate(req, SHELL_FILES.some((f) => url.pathname.endsWith('/' + f)) ? SHELL : RUNTIME));
+    e.respondWith(networkFirst(req, SHELL));
   } else if (req.destination === 'image' || req.destination === 'font' || req.destination === 'style') {
     // รูปแมพ/ไอคอนจาก valorant-api และฟอนต์ Google
     e.respondWith(staleWhileRevalidate(req, RUNTIME));

@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.2.0';
+const APP_VERSION = '1.2.1';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -1414,6 +1414,16 @@ async function init() {
   if (h.id) openDetail(h.id);
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
+    // When a new version's service worker takes over, reload once so the new code runs —
+    // unless the editor is open (don't lose unsaved input), then just say so.
+    const hadController = !!navigator.serviceWorker.controller;
+    let reloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (!hadController || reloaded) return;
+      if ($('#editor').open || $('#annot').open) { toast('มีเวอร์ชันใหม่ — บันทึกแล้วรีเฟรชเพื่อใช้'); return; }
+      reloaded = true;
+      location.reload();
+    });
     navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW', e));
   }
 }
