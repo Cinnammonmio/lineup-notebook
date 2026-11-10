@@ -561,11 +561,20 @@ function openDetail(id) {
       el('div', { class: 'grow' },
         el('h2', { text: l.title || '(ไม่มีชื่อ)' }),
         el('div', { class: 'sub', text: [l.agent, l.ability, l.site && 'ไซต์ ' + l.site, l.throw].filter(Boolean).join(' · ') })),
+      el('button', {
+        type: 'button', class: 'btn icon land-only' + (done ? ' ok' : ''), title: 'ซ้อมแล้ว', 'aria-label': 'ซ้อมแล้ว',
+        'aria-pressed': String(done), onclick: () => { togglePracticed(l.id); openDetail(l.id); },
+      }, '✓'),
+      el('button', {
+        type: 'button', class: 'btn icon land-only', title: 'แก้ไข', 'aria-label': 'แก้ไข',
+        onclick: () => { d.close(); openEditor(l); },
+      }, '✎'),
       navBtn('‹', 'lineup ก่อนหน้า', prev),
       navBtn('›', 'lineup ถัดไป', next),
       el('button', { type: 'button', class: 'btn icon', 'aria-label': 'ปิด', onclick: () => d.close() }, '✕')),
     el('div', { class: 'sheet-body' },
-      showPair ? el('div', { class: 'pair' }, pairFig(stand, 'จุดยืน'), pairFig(aim, 'จุดเล็ง')) : null,
+      showPair ? el('div', { class: 'pair' }, pairFig(stand, 'จุดยืน'), pairFig(aim, 'จุดเล็ง'),
+        el('span', { class: 'scroll-hint', 'aria-hidden': 'true', text: '▲ ปัดขึ้นดูวิธีทำ' })) : null,
       el('div', { class: 'detail-cols' },
         el('div', { class: 'detail-text' },
           el('div', { class: 'chips' }, chips(l)),
@@ -888,11 +897,13 @@ function bindUi() {
   $('#zoom').addEventListener('click', () => $('#zoom').close());
 }
 
-const LANDSCAPE_PHONE = matchMedia('(orientation: landscape) and (max-height: 520px)');
+const LANDSCAPE_PHONE = matchMedia('(orientation: landscape) and (max-height: 600px)');
+/** Landscape phone: header + map chips live in the right column so the map can use the full height. */
 function placeMapChips() {
+  const top = $('header.top');
   const maps = $('#maps');
-  if (LANDSCAPE_PHONE.matches) $('.list-col').prepend(maps);
-  else $('main.layout').before(maps);
+  if (LANDSCAPE_PHONE.matches) $('.list-col').prepend(top, maps);
+  else { document.body.prepend(top); $('main.layout').before(maps); }
 }
 
 async function init() {
