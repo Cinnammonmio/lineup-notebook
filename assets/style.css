@@ -485,3 +485,5 @@ dialog.annot::backdrop { background: #000; }
 .annot-stage { flex: 1; min-height: 0; display: flex; align-items: center; justify-content: center; padding: 10px; }
 #annotCanvas { max-width: 100%; max-height: 100%; touch-action: none; cursor: crosshair; border-radius: 6px; background: #000; }
 .title-row input, .pk-text { color: var(--text); }
+
+.menu-ver { padding: 8px 12px 4px; margin-top: 4px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); font-family: "Chakra Petch", var(--font); letter-spacing: .06em; }
