@@ -118,9 +118,10 @@
   },
   {
     "id": "mwb5ge45truz",
-    "title": "Killjoy A · Entry",
+    "title": "Nanoswarm A · Entry",
     "map": "Summit",
     "agent": "Killjoy",
+    "ability": "Nanoswarm",
     "side": "attack",
     "site": "A",
     "type": "entry",
@@ -147,5 +148,57 @@
         "caption": "จุดเล็ง 2"
       }
     ]
+  },
+  {
+    "id": "mwb5kpquke3h",
+    "title": "Nanoswarm A · Hold",
+    "map": "Summit",
+    "agent": "Killjoy",
+    "ability": "Nanoswarm",
+    "side": "attack",
+    "site": "A",
+    "type": "hold",
+    "from": {
+      "x": 0.52,
+      "y": 0.489
+    },
+    "to": {
+      "x": 0.926,
+      "y": 0.45
+    },
+    "throw": "กระโดดแล้วปา",
+    "media": [
+      {
+        "src": "media/summit/killjoy-a-nanoswarm-mwb5kpquke3h-stand-vmwb5kpqu.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/summit/killjoy-a-nanoswarm-mwb5kpquke3h-aim-vmwb5kpr3.webp",
+        "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/summit/killjoy-a-nanoswarm-mwb5kpquke3h-aim2-vmwb5kpr8.webp",
+        "caption": "จุดเล็ง 2"
+      }
+    ]
+  },
+  {
+    "id": "mwb5q30qwemi",
+    "title": "Mosh Pit A · Entry",
+    "map": "Summit",
+    "agent": "Gekko",
+    "ability": "Mosh Pit",
+    "side": "attack",
+    "site": "A",
+    "type": "entry",
+    "from": {
+      "x": 0.748,
+      "y": 0.715
+    },
+    "to": {
+      "x": 0.755,
+      "y": 0.383
+    },
+    "throw": "กระโดดแล้วปา"
   }
 ]
