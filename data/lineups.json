@@ -200,5 +200,17 @@
       "y": 0.383
     },
     "throw": "กระโดดแล้วปา"
+  },
+  {
+    "id": "mwb6dpvk2a8z",
+    "kind": "plan",
+    "title": "A1",
+    "map": "Summit",
+    "side": "attack",
+    "site": "A",
+    "items": [
+      "mwb5q30qwemi",
+      "mwavgi9kq4bv"
+    ]
   }
 ]
