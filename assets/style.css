@@ -1,4 +1,5 @@
 :root {
+  --app-h: 100dvh; /* set from JS to the real window height (dvh is unreliable on some phones) */
   --bg: #0f1218;
   --panel: #161a22;
   --panel2: #1e232d;
@@ -23,7 +24,7 @@ body {
   background: var(--bg);
   color: var(--text);
   font: 15px/1.5 var(--font);
-  min-height: 100dvh;
+  min-height: var(--app-h);
   -webkit-tap-highlight-color: transparent;
   -webkit-text-size-adjust: 100%;
 }
@@ -108,7 +109,7 @@ a { color: var(--accent); }
   .layout { grid-template-columns: minmax(0, 1fr) minmax(360px, 480px); align-items: start; }
   .map-col { position: sticky; top: 72px; }
   /* only the lineup list scrolls; agent row stays put */
-  .list-col { position: sticky; top: 72px; height: calc(100dvh - 88px); display: flex; flex-direction: column; }
+  .list-col { position: sticky; top: 72px; height: calc(var(--app-h) - 88px); display: flex; flex-direction: column; }
   .list-col > .list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; align-content: start; padding-bottom: 8px; }
 }
 
@@ -116,7 +117,7 @@ a { color: var(--accent); }
 .map-wrap, .mini { container-type: inline-size; }
 .map-wrap {
   position: relative; width: 100%;
-  max-width: min(100%, calc(100dvh - 150px));
+  max-width: min(100%, calc(var(--app-h) - 150px));
   aspect-ratio: 1; margin: 0 auto;
   background: radial-gradient(circle at 50% 45%, #1b212b, #0c0f14 70%);
   border: 1px solid var(--line); border-radius: var(--radius);
@@ -254,7 +255,7 @@ textarea { resize: vertical; line-height: 1.5; }
 dialog.sheet {
   padding: 0; border: 1px solid var(--line); background: var(--panel); color: var(--text);
   width: min(560px, calc(100% - 32px)); max-width: none;
-  max-height: min(880px, calc(100dvh - 32px));
+  max-height: min(880px, calc(var(--app-h) - 32px));
   border-radius: 16px; box-shadow: 0 24px 64px #000a; overflow: hidden;
 }
 dialog.sheet[open] { display: flex; flex-direction: column; }
@@ -331,14 +332,14 @@ dialog.sheet.detail { width: min(1100px, calc(100% - 32px)); }
 /* ---------- zoom (full-screen image) ---------- */
 dialog.zoom {
   padding: 0; border: 0; margin: 0; background: #000; color: #fff;
-  width: 100vw; height: 100dvh; max-width: none; max-height: none; overflow: hidden;
+  width: 100vw; height: var(--app-h); max-width: none; max-height: none; overflow: hidden;
 }
 dialog.zoom[open] { display: block; }
 dialog.zoom::backdrop { background: #000; }
 .zoom-stage { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; touch-action: none; cursor: zoom-in; user-select: none; -webkit-user-select: none; }
 dialog.zoom.zoomed .zoom-stage { cursor: grab; }
 dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
-.zoom-stage img { max-width: 100%; max-height: 100dvh; object-fit: contain; transform-origin: center center; will-change: transform; -webkit-user-drag: none; pointer-events: auto; }
+.zoom-stage img { max-width: 100%; max-height: var(--app-h); object-fit: contain; transform-origin: center center; will-change: transform; -webkit-user-drag: none; pointer-events: auto; }
 .zoom-bar { position: fixed; z-index: 3; right: max(10px, env(safe-area-inset-right)); top: max(10px, env(safe-area-inset-top)); display: flex; gap: 6px; }
 .zoom-btn { width: 42px; height: 42px; border-radius: 10px; border: 1px solid #ffffff33; background: #000b; color: #fff; font-size: 20px; line-height: 1; cursor: pointer; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
 .zoom-btn:hover { background: #000; }
@@ -355,21 +356,21 @@ dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
 .scroll-hint { display: none; }
 .land-only { display: none !important; }
 @media (orientation: landscape) and (max-height: 600px) {
-  html, body { height: 100dvh; overflow: hidden; }
+  html, body { height: var(--app-h); overflow: hidden; }
   .btn { min-height: 34px; }
   .btn.icon { width: 36px; }
 
   .layout {
-    height: 100dvh; max-width: none; margin: 0;
+    height: var(--app-h); max-width: none; margin: 0;
     grid-template-columns: auto minmax(0, 1fr); gap: 10px; align-items: start;
-    padding: 0 max(8px, env(safe-area-inset-right)) 0 max(6px, env(safe-area-inset-left));
+    padding: 0 max(6px, calc(env(safe-area-inset-right) * .4)) 0 max(6px, calc(env(safe-area-inset-left) * .4));
   }
   .map-col { position: relative; top: 0; padding-top: 6px; }
-  .map-wrap { width: min(calc(100dvh - 12px), 62vw); height: min(calc(100dvh - 12px), 62vw); max-width: none; }
+  .map-wrap { width: min(calc(var(--app-h) - 12px), 60vw); height: min(calc(var(--app-h) - 12px), 60vw); max-width: none; }
   .legend, .foot { display: none; }
   .pick-banner { position: absolute; z-index: 5; left: 8px; right: 8px; top: 8px; margin: 0; font-size: 14px; }
 
-  .list-col { position: static; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
+  .list-col { position: static; height: var(--app-h); display: flex; flex-direction: column; overflow: hidden; padding-bottom: 0; }
   .list-col > .list { flex: 1; min-height: 0; overflow-y: auto; overscroll-behavior: contain; align-content: start; padding-bottom: 10px; gap: 6px; }
   .list-col > * { flex-shrink: 0; }
   .list-col .top {
@@ -396,8 +397,8 @@ dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
 
   /* detail: one screen = header + stand | aim. Text below, swipe up to read */
   dialog.sheet.detail {
-    width: 100vw; height: 100dvh; max-height: none; margin: 0; border: 0; border-radius: 0;
-    padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right);
+    width: 100vw; height: var(--app-h); max-height: none; margin: 0; border: 0; border-radius: 0;
+    padding-left: 0; padding-right: 0;
   }
   /* header floats over the pictures so they get the full screen height */
   dialog.sheet.detail .sheet-head {
@@ -411,7 +412,7 @@ dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
   dialog.sheet.detail .head-ic { width: 32px; height: 32px; padding: 3px; }
   dialog.sheet.detail .sheet-body { padding: 0 6px 16px; gap: 14px; }
   dialog.sheet.detail .sheet-body { padding: 0 0 16px; }
-  .pair { position: relative; gap: 2px; height: 100dvh; padding: 0; margin: 0; }
+  .pair { position: relative; gap: 2px; height: var(--app-h); padding: 0; margin: 0; }
   .pair-fig { height: 100%; }
   .pair-fig .zoomable { height: 100%; }
   /* fill each half (crops the left/right edges a little); ⤢ switches to "fit" to see the whole picture */
@@ -426,7 +427,7 @@ dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
   .detail-cols { flex-direction: row; align-items: flex-start; padding: 0 6px; }
   .detail-cols .mini { width: 200px; flex: 0 0 200px; margin: 0; }
 
-  dialog.sheet:not(.detail) { width: min(640px, 100%); margin: auto; border-radius: 16px; max-height: calc(100dvh - 16px); border-bottom: 1px solid var(--line); }
+  dialog.sheet:not(.detail) { width: min(640px, 100%); margin: auto; border-radius: 16px; max-height: calc(var(--app-h) - 16px); border-bottom: 1px solid var(--line); }
 }
 
 /* ---------- editor: icon pickers ---------- */
@@ -487,7 +488,7 @@ dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
 /* ---------- highlight tool ---------- */
 dialog.annot {
   padding: 0; border: 0; margin: 0; background: #07090c; color: var(--text);
-  width: 100vw; height: 100dvh; max-width: none; max-height: none;
+  width: 100vw; height: var(--app-h); max-width: none; max-height: none;
 }
 dialog.annot[open] { display: flex; flex-direction: column; }
 dialog.annot::backdrop { background: #000; }
@@ -530,3 +531,6 @@ dialog.annot::backdrop { background: #000; }
 .unsynced:disabled { opacity: .7; cursor: progress; }
 
 .shot img.zoomable-img { cursor: zoom-in; }
+
+/* crop aspect choices (highlight tool, crop mode) */
+.annot-aspect > button:not([data-color]) { font-size: 13px; }
