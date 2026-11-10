@@ -585,3 +585,6 @@ dialog.annot::backdrop { background: #000; }
 /* no visible scrollbars on the chip rows (swipe / mouse wheel still scrolls them); only the lineup list scrolls */
 .maps, .agent-row { scrollbar-width: none; }
 .maps::-webkit-scrollbar, .agent-row::-webkit-scrollbar { display: none; }
+
+.brand-ver { align-self: flex-end; margin-left: 2px; font: 600 11px/1 "Chakra Petch", var(--font); color: var(--muted); letter-spacing: .04em; padding: 2px 6px; border: 1px solid var(--line); border-radius: 999px; }
+.card-agent { flex: 0 0 auto; width: 40px; height: 40px; border-radius: 10px; object-fit: cover; background: #0b0e13; border: 2px solid var(--ag, var(--line)); }
