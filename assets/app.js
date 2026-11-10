@@ -556,10 +556,10 @@ function mediaEl({ src, caption }) {
       allow: 'encrypted-media; picture-in-picture; fullscreen', allowfullscreen: true,
     }));
   } else if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(src)) {
-    node = el('video', { src: safeHref(src), controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
+    node = el('video', { src: mediaSrc(src), controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
   } else if (/\.(png|jpe?g|webp|gif|avif|bmp)(\?|#|$)/i.test(src) || /^(media\/|data:image\/)/i.test(src)) {
     node = el('button', { type: 'button', class: 'zoomable', onclick: () => zoom(src, caption), 'aria-label': 'ขยายรูป' },
-      el('img', { src: safeHref(src), alt: caption || '', loading: 'lazy' }));
+      el('img', { src: mediaSrc(src), alt: caption || '', loading: 'lazy' }));
   } else {
     node = el('a', { class: 'link', href: safeHref(src), target: '_blank', rel: 'noopener noreferrer', text: src });
   }
@@ -594,18 +594,21 @@ function splitMedia(list) {
   return { stand, aim, rest };
 }
 
-function pairFig(m, label) {
+function pairFig(m, label, badge) {
   return el('figure', { class: 'pair-fig' },
     m
-      ? el('button', { type: 'button', class: 'zoomable', onclick: () => zoom(m.src, label), 'aria-label': 'ขยายรูป' + label },
-        el('img', { src: safeHref(m.src), alt: label }))
+      ? el('button', { type: 'button', class: 'zoomable', onclick: () => zoom(m.src, label, badge), 'aria-label': 'ขยายรูป' + label },
+        el('img', { src: mediaSrc(m.src), alt: label }))
       : el('div', { class: 'pair-empty', text: 'ยังไม่มีรูป' + label }),
-    el('figcaption', { text: label }));
+    el('figcaption', { text: label }),
+    badge ? el('span', { class: 'throw-badge', text: badge }) : null);
 }
 
-function zoom(src, caption) {
+function zoom(src, caption, badge) {
   const z = $('#zoom');
-  z.replaceChildren(el('img', { src: safeHref(src), alt: caption || '' }), ...(caption ? [el('span', { class: 'zoom-cap', text: caption })] : []));
+  z.replaceChildren(el('img', { src: mediaSrc(src), alt: caption || '' }),
+    ...(caption ? [el('span', { class: 'zoom-cap', text: caption })] : []),
+    ...(badge ? [el('span', { class: 'throw-badge zoom-badge', text: badge })] : []));
   z.showModal();
 }
 
@@ -646,7 +649,7 @@ function openDetail(id) {
       navBtn('›', 'lineup ถัดไป', next),
       el('button', { type: 'button', class: 'btn icon', 'aria-label': 'ปิด', onclick: () => d.close() }, '✕')),
     el('div', { class: 'sheet-body' },
-      showPair ? el('div', { class: 'pair' }, pairFig(stand, 'จุดยืน'), pairFig(aim, 'จุดเล็ง'),
+      showPair ? el('div', { class: 'pair' }, pairFig(stand, 'จุดยืน'), pairFig(aim, 'จุดเล็ง', l.throw),
         el('span', { class: 'scroll-hint', 'aria-hidden': 'true', text: '▲ ปัดขึ้นดูวิธีทำ' })) : null,
       el('div', { class: 'detail-cols' },
         el('div', { class: 'detail-text' },
@@ -662,16 +665,111 @@ function openDetail(id) {
   d.querySelector('.sheet-body').scrollTop = 0;
 }
 
+/* ---------- local media: images added in the editor live in IndexedDB until exported ---------- */
+
+const mediaDb = {
+  _db: null,
+  open() {
+    this._db ||= new Promise((res, rej) => {
+      const r = indexedDB.open('lp-media', 1);
+      r.onupgradeneeded = () => r.result.createObjectStore('files');
+      r.onsuccess = () => res(r.result);
+      r.onerror = () => rej(r.error);
+    });
+    return this._db;
+  },
+  async run(mode, fn) {
+    const db = await this.open();
+    return new Promise((res, rej) => {
+      const t = db.transaction('files', mode);
+      const req = fn(t.objectStore('files'));
+      t.oncomplete = () => res(req?.result);
+      t.onerror = () => rej(t.error);
+    });
+  },
+  get: (k) => mediaDb.run('readonly', (st) => st.get(k)),
+  put: (k, v) => mediaDb.run('readwrite', (st) => st.put(v, k)),
+  del: (k) => mediaDb.run('readwrite', (st) => st.delete(k)),
+  keys: () => mediaDb.run('readonly', (st) => st.getAllKeys()),
+};
+/** repo path (e.g. media/ascent/x-stand.webp) → object URL, for images that are not in the repo yet */
+const localUrls = new Map();
+const mediaSrc = (src) => localUrls.get(src) || safeHref(src);
+
+async function loadLocalMedia() {
+  try {
+    for (const k of await mediaDb.keys()) {
+      const v = await mediaDb.get(k);
+      if (v?.blob) localUrls.set(k, URL.createObjectURL(v.blob));
+    }
+  } catch (e) { console.warn('IndexedDB', e); }
+}
+async function putLocalMedia(path, rec) {
+  await mediaDb.put(path, rec);
+  if (localUrls.has(path)) URL.revokeObjectURL(localUrls.get(path));
+  localUrls.set(path, URL.createObjectURL(rec.blob));
+}
+async function delLocalMedia(path) {
+  try { await mediaDb.del(path); } catch { /* ignore */ }
+  if (localUrls.has(path)) { URL.revokeObjectURL(localUrls.get(path)); localUrls.delete(path); }
+}
+const mediaPaths = (l) => (l.media || []).map(parseMedia).filter(Boolean).map((m) => m.src);
+
+/** Drop stored images that nothing uses any more, or that the site already serves from the repo. */
+async function cleanLocalMedia() {
+  const used = new Set(Object.values(state.local).flatMap(mediaPaths));
+  const inBase = new Set(state.base.flatMap(mediaPaths));
+  for (const path of [...localUrls.keys()]) {
+    if (used.has(path)) continue;
+    if (!inBase.has(path)) { await delLocalMedia(path); continue; }
+    try { if ((await fetch(path, { method: 'HEAD', cache: 'no-store' })).ok) await delLocalMedia(path); } catch { /* offline: keep */ }
+  }
+}
+
+function loadImg(src) {
+  return new Promise((res, rej) => {
+    const url = src instanceof Blob ? URL.createObjectURL(src) : src;
+    const i = new Image();
+    i.onload = () => { if (src instanceof Blob) URL.revokeObjectURL(url); res(i); };
+    i.onerror = () => rej(new Error('เปิดรูปไม่ได้'));
+    i.src = url;
+  });
+}
+/** WebP when the browser can encode it (most can), otherwise JPEG. */
+function canvasBlob(c) {
+  return new Promise((res) => c.toBlob((b) => {
+    if (b && b.type === 'image/webp') res(b); else c.toBlob(res, 'image/jpeg', 0.85);
+  }, 'image/webp', 0.8));
+}
+const MAX_W = 1280;
+async function shrinkImage(file) {
+  const img = await loadImg(file);
+  const k = Math.min(1, MAX_W / img.naturalWidth);
+  const c = el('canvas', { width: Math.round(img.naturalWidth * k), height: Math.round(img.naturalHeight * k) });
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return canvasBlob(c);
+}
+const slug = (s) => norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
+const extOf = (blob) => (blob.type === 'image/webp' ? 'webp' : 'jpg');
+function shotPath(d, kind, blob, oldSrc) {
+  if (oldSrc && /^media\//.test(oldSrc) && oldSrc.endsWith('.' + extOf(blob))) return oldSrc; // overwrite the same file
+  return `media/${slug(d.map)}/${[slug(d.agent), slug(d.site), slug(d.ability), d.id, kind].join('-')}.${extOf(blob)}`;
+}
+
 /* ---------- editor ---------- */
+
+const SHOT_LABEL = { stand: 'จุดยืน', aim: 'จุดเล็ง' };
+const THROWS = ['ปาปกติ', 'กระโดดแล้วปา'];
+const TYPE_SHORT = { entry: 'Entry', execute: 'Execute', 'post-plant': 'Post-plant', retake: 'Retake', info: 'Info', hold: 'Hold', smoke: 'Smoke', other: '' };
+
+function autoTitle(d) {
+  const head = [d.ability || d.agent, d.site].filter(Boolean).join(' ');
+  return [head, TYPE_SHORT[d.type]].filter(Boolean).join(' · ');
+}
 
 function fillOptions(select, pairs, value) {
   select.replaceChildren(...pairs.map(([v, t]) => el('option', { value: v, text: t })));
   select.value = value ?? pairs[0]?.[0] ?? '';
-}
-
-function fillAbilityList(agentName) {
-  const a = agentOf(agentName);
-  $('#abilityList').replaceChildren(...(a?.abilities || []).map((x) => el('option', { value: x.name })));
 }
 
 function renderPos(d) {
@@ -679,6 +777,112 @@ function renderPos(d) {
   set('#posFrom', d.from);
   set('#posTo', d.to);
   if (!d.from && d.to) $('#posFrom').textContent = 'ไม่มี (วางจากแมพ)';
+}
+
+function pickBtn(cls, on, label, onclick, ...kids) {
+  return el('button', { type: 'button', class: cls + (on ? ' on' : ''), role: 'radio', 'aria-checked': String(on), title: label, 'aria-label': label, onclick }, ...kids);
+}
+
+function renderPickers() {
+  const d = state.editing.draft;
+  const change = (k, v) => {
+    d[k] = v;
+    if (k === 'agent' && !agentOf(v)?.abilities.some((x) => norm(x.name) === norm(d.ability))) d.ability = '';
+    renderPickers();
+    updateTitle();
+  };
+  const textFallback = (k, ph) => el('input', { class: 'pk-text', value: d[k] || '', placeholder: ph, oninput: (e) => { d[k] = e.target.value.trim(); updateTitle(); } });
+
+  const maps = mapNames();
+  if (d.map && !maps.some((n) => norm(n) === norm(d.map))) maps.push(d.map);
+  $('#pickMap').replaceChildren(...maps.map((n) => {
+    const m = mapOf(n);
+    return pickBtn('pk-map', norm(n) === norm(d.map), n, () => change('map', n),
+      m?.banner ? el('img', { src: m.banner, alt: '' }) : null, el('span', { text: n }));
+  }));
+
+  $('#pickAgent').replaceChildren(...(state.agents.length
+    ? state.agents.map((a) => pickBtn('pk-ag', norm(a.name) === norm(d.agent), a.name, () => change('agent', a.name), el('img', { src: a.icon, alt: '' })))
+    : [textFallback('agent', 'ชื่อเอเจนต์ เช่น Brimstone')]));
+
+  const abilities = agentOf(d.agent)?.abilities || [];
+  $('#pickAbility').replaceChildren(...(abilities.length
+    ? abilities.map((x) => pickBtn('pk-ab', norm(x.name) === norm(d.ability), x.name, () => change('ability', x.name),
+      x.icon ? el('img', { src: x.icon, alt: '' }) : null, el('span', { text: x.name })))
+    : d.agent && !state.agents.length ? [textFallback('ability', 'ชื่อสกิล เช่น Incendiary')]
+      : [el('span', { class: 'muted-s', text: 'เลือกเอเจนต์ก่อน' })]));
+
+  for (const id of ['#pickMap', '#pickAgent', '#pickAbility']) scrollIntoRowIfHidden($(id), $(id).querySelector('.on'));
+}
+
+function updateTitle() {
+  const f = $('#editForm').elements;
+  const auto = autoTitle(readForm());
+  if (!state.editing.titleManual) f.title.value = auto;
+  $('#titleMode').textContent = state.editing.titleManual ? '(ตั้งเอง)' : '(อัตโนมัติ)';
+  $('#btnAutoTitle').hidden = !state.editing.titleManual;
+}
+
+function renderShots() {
+  const ed = state.editing;
+  const throwText = readThrow();
+  for (const box of document.querySelectorAll('#editor .shot')) {
+    const kind = box.dataset.kind;
+    const s = ed.shots[kind];
+    const label = SHOT_LABEL[kind];
+    box.classList.toggle('active', ed.activeShot === kind);
+    box.classList.toggle('has', !!s);
+    box.replaceChildren(...(s
+      ? [
+        el('img', { src: s.url, alt: label }),
+        el('span', { class: 'cap', text: label }),
+        kind === 'aim' && throwText ? el('span', { class: 'throw-badge', text: throwText }) : null,
+        el('span', { class: 'shot-tools' },
+          el('button', { type: 'button', title: 'ไฮไลต์', onclick: (e) => { e.stopPropagation(); annotateShot(kind); } }, '✎ ไฮไลต์'),
+          el('button', { type: 'button', title: 'เปลี่ยนรูป', onclick: (e) => { e.stopPropagation(); chooseShot(kind); } }, 'เปลี่ยน'),
+          el('button', { type: 'button', title: 'ลบรูป', onclick: (e) => { e.stopPropagation(); ed.shots[kind] = null; renderShots(); } }, '✕')),
+      ].filter(Boolean)
+      : [el('button', { type: 'button', class: 'shot-empty', onclick: () => chooseShot(kind) },
+        el('b', { text: '+ รูป' + label }), el('small', { text: 'แตะเพื่อเลือก · Ctrl+V · ลากไฟล์มาวาง' }))]));
+  }
+}
+
+function chooseShot(kind) {
+  state.editing.activeShot = kind;
+  renderShots();
+  $('#shotFile').click();
+}
+
+async function setShotFile(kind, file) {
+  if (!file?.type?.startsWith('image/')) { toast('ไฟล์นี้ไม่ใช่รูป'); return; }
+  try {
+    const blob = await shrinkImage(file);
+    state.editing.shots[kind] = { ...state.editing.shots[kind], blob, orig: blob, shapes: [], url: URL.createObjectURL(blob), dirty: true };
+    state.editing.activeShot = kind === 'stand' && !state.editing.shots.aim ? 'aim' : kind;
+    renderShots();
+  } catch (e) { toast(e.message); }
+}
+
+async function annotateShot(kind) {
+  const s = state.editing.shots[kind];
+  if (!s) return;
+  let { orig, shapes } = s;
+  if (!orig && s.src && localUrls.has(s.src)) {
+    const rec = await mediaDb.get(s.src).catch(() => null);
+    orig = rec?.orig; shapes = rec?.shapes;
+  }
+  if (!orig) {
+    try { orig = await (await fetch(s.url)).blob(); } catch { toast('โหลดรูปเพื่อไฮไลต์ไม่ได้'); return; }
+  }
+  const out = await openAnnot(orig, shapes || [], SHOT_LABEL[kind]);
+  if (!out) return;
+  state.editing.shots[kind] = { ...s, orig, blob: out.blob, shapes: out.shapes, url: URL.createObjectURL(out.blob), dirty: true };
+  renderShots();
+}
+
+function readThrow() {
+  const f = $('#editForm').elements;
+  return f.throwSel.value === '__other' ? f.throw.value.trim() : f.throwSel.value;
 }
 
 function openEditor(src) {
@@ -689,56 +893,179 @@ function openEditor(src) {
     const only = [...state.f.agents][0];
     d.agent = agentOf(only)?.name || only;
   }
-  state.editing = { draft: d, exists };
+  const media = (d.media || []).map(parseMedia).filter(Boolean);
+  const { stand, aim, rest } = splitMedia(media);
+  const fromMedia = (m) => (m ? { src: m.src, url: mediaSrc(m.src) } : null);
+  state.editing = {
+    draft: d, exists,
+    shots: d._shots || { stand: fromMedia(stand), aim: fromMedia(aim) },
+    activeShot: null,
+    titleManual: d._titleManual ?? (!!d.title && d.title !== autoTitle(d)),
+  };
+  delete d._shots; delete d._titleManual;
 
   const f = $('#editForm').elements;
   $('#editTitle').textContent = exists ? 'แก้ไข lineup' : 'เพิ่ม lineup';
   f.title.value = d.title || '';
-  const names = mapNames();
-  if (d.map && !names.some((n) => norm(n) === norm(d.map))) names.push(d.map);
-  fillOptions(f.map, names.map((n) => [n, n]), canonMap(d.map) || d.map);
-  f.agent.value = d.agent || '';
-  fillAbilityList(d.agent);
-  f.ability.value = d.ability || '';
   f.side.value = d.side || 'attack';
-  fillOptions(f.site, [['', '—'], ...SITES.map((s) => [s, s])], d.site || '');
+  fillOptions(f.site, [['', '—'], ...SITES.map((x) => [x, x])], d.site || '');
   fillOptions(f.type, TYPES, d.type || 'other');
+  const known = !d.throw || THROWS.includes(d.throw);
+  f.throwSel.value = known ? (d.throw || '') : '__other';
+  f.throw.value = known ? '' : d.throw;
+  $('#throwOtherWrap').hidden = known;
   f.steps.value = d.steps || '';
-  f.throw.value = d.throw || '';
-  f.media.value = (d.media || []).map(parseMedia).filter(Boolean)
-    .map((m) => (m.caption ? `${m.src} | ${m.caption}` : m.src)).join('\n');
+  f.media.value = (d._restText ?? rest.map((m) => (m.caption ? `${m.src} | ${m.caption}` : m.src)).join('\n'));
+  delete d._restText;
   f.tags.value = (d.tags || []).join(', ');
   renderPos(d);
+  renderPickers();
+  updateTitle();
+  renderShots();
   $('#btnDelete').hidden = !exists;
   $('#mobileWarn').hidden = !isMobile();
 
   const dlg = $('#editor');
   if (!dlg.open) dlg.showModal();
   dlg.querySelector('.sheet-body').scrollTop = 0;
-  if (!exists && !d.title) setTimeout(() => f.title.focus(), 50);
 }
 
+/** Form → lineup fields (map/agent/ability live on the draft, set by the icon pickers). */
 function readForm() {
   const f = $('#editForm').elements;
   const d = { ...state.editing.draft };
-  const agent = f.agent.value.trim();
   d.title = f.title.value.trim();
-  d.map = f.map.value;
-  d.agent = agentOf(agent)?.name || agent;
-  const ab = f.ability.value.trim();
-  d.ability = agentOf(d.agent)?.abilities.find((x) => norm(x.name) === norm(ab))?.name || ab;
+  d.agent = agentOf(d.agent)?.name || d.agent || '';
+  d.ability = agentOf(d.agent)?.abilities.find((x) => norm(x.name) === norm(d.ability))?.name || d.ability || '';
   d.side = f.side.value;
   d.site = f.site.value;
   d.type = f.type.value;
   d.steps = f.steps.value.trim();
-  d.throw = f.throw.value.trim();
-  d.media = f.media.value.split('\n').map((s) => s.trim()).filter(Boolean).map((s) => {
-    const [src, ...rest] = s.split('|');
-    const caption = rest.join('|').trim();
-    return caption ? { src: src.trim(), caption } : src.trim();
-  });
-  d.tags = f.tags.value.split(',').map((s) => s.trim()).filter(Boolean);
+  d.throw = readThrow();
+  d.tags = f.tags.value.split(',').map((x) => x.trim()).filter(Boolean);
   return d;
+}
+const readRestMedia = () => $('#editForm').elements.media.value.split('\n').map((x) => x.trim()).filter(Boolean).map((x) => {
+  const [src, ...more] = x.split('|');
+  const caption = more.join('|').trim();
+  return caption ? { src: src.trim(), caption } : src.trim();
+});
+
+/** Save images to IndexedDB under their future repo path and build the media list. */
+async function buildMedia(d) {
+  const out = [];
+  for (const kind of ['stand', 'aim']) {
+    const sh = state.editing.shots[kind];
+    if (!sh) continue;
+    let src = sh.src;
+    if (sh.dirty) {
+      src = shotPath(d, kind, sh.blob, sh.src);
+      await putLocalMedia(src, { blob: sh.blob, orig: sh.orig, shapes: sh.shapes || [] });
+    }
+    out.push({ src, caption: SHOT_LABEL[kind] });
+  }
+  return [...out, ...readRestMedia()];
+}
+
+/* ---------- highlight tool ---------- */
+
+const annot = { img: null, shapes: [], tool: 'circle', color: '#ff4655', cur: null, resolve: null };
+
+async function openAnnot(blob, shapes, label) {
+  annot.img = await loadImg(blob);
+  annot.shapes = JSON.parse(JSON.stringify(shapes));
+  const c = $('#annotCanvas');
+  const k = Math.min(1, MAX_W / annot.img.naturalWidth);
+  c.width = Math.round(annot.img.naturalWidth * k);
+  c.height = Math.round(annot.img.naturalHeight * k);
+  $('#annot').setAttribute('aria-label', 'ไฮไลต์รูป' + label);
+  drawAnnot();
+  $('#annot').showModal();
+  return new Promise((res) => { annot.resolve = res; });
+}
+
+function drawShape(ctx, sh, w, h) {
+  const lw = Math.max(3, Math.round(w / 200));
+  ctx.save();
+  ctx.strokeStyle = sh.color; ctx.fillStyle = sh.color; ctx.lineWidth = lw;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.shadowColor = 'rgba(0,0,0,.65)'; ctx.shadowBlur = lw * 1.5;
+  ctx.beginPath();
+  if (sh.type === 'circle') {
+    const cx = (sh.x1 + sh.x2) / 2 * w, cy = (sh.y1 + sh.y2) / 2 * h;
+    ctx.ellipse(cx, cy, Math.abs(sh.x2 - sh.x1) / 2 * w || 1, Math.abs(sh.y2 - sh.y1) / 2 * h || 1, 0, 0, Math.PI * 2);
+    ctx.stroke();
+  } else if (sh.type === 'arrow') {
+    const x1 = sh.x1 * w, y1 = sh.y1 * h, x2 = sh.x2 * w, y2 = sh.y2 * h;
+    const a = Math.atan2(y2 - y1, x2 - x1), hl = lw * 4.5;
+    ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.stroke();
+    ctx.beginPath();
+    ctx.moveTo(x2, y2);
+    ctx.lineTo(x2 - hl * Math.cos(a - 0.45), y2 - hl * Math.sin(a - 0.45));
+    ctx.lineTo(x2 - hl * Math.cos(a + 0.45), y2 - hl * Math.sin(a + 0.45));
+    ctx.closePath(); ctx.fill();
+  } else if (sh.type === 'pen') {
+    sh.pts.forEach(([x, y], i) => (i ? ctx.lineTo(x * w, y * h) : ctx.moveTo(x * w, y * h)));
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+function drawAnnot() {
+  const c = $('#annotCanvas');
+  const ctx = c.getContext('2d');
+  ctx.drawImage(annot.img, 0, 0, c.width, c.height);
+  for (const sh of annot.shapes) drawShape(ctx, sh, c.width, c.height);
+}
+
+function closeAnnot(result) {
+  const r = annot.resolve;
+  annot.resolve = null;
+  if ($('#annot').open) $('#annot').close();
+  r?.(result);
+}
+
+function bindAnnot() {
+  const c = $('#annotCanvas');
+  const pt = (e) => {
+    const r = c.getBoundingClientRect();
+    return [round3((e.clientX - r.left) / r.width), round3((e.clientY - r.top) / r.height)];
+  };
+  c.addEventListener('pointerdown', (e) => {
+    c.setPointerCapture(e.pointerId);
+    const [x, y] = pt(e);
+    annot.cur = annot.tool === 'pen'
+      ? { type: 'pen', color: annot.color, pts: [[x, y]] }
+      : { type: annot.tool, color: annot.color, x1: x, y1: y, x2: x, y2: y };
+    annot.shapes.push(annot.cur);
+  });
+  c.addEventListener('pointermove', (e) => {
+    if (!annot.cur) return;
+    const [x, y] = pt(e);
+    if (annot.cur.type === 'pen') annot.cur.pts.push([x, y]); else { annot.cur.x2 = x; annot.cur.y2 = y; }
+    drawAnnot();
+  });
+  const end = () => {
+    const sh = annot.cur;
+    annot.cur = null;
+    if (sh && sh.type !== 'pen' && Math.hypot(sh.x2 - sh.x1, sh.y2 - sh.y1) < 0.01) annot.shapes.pop(); // a tap, not a drag
+    drawAnnot();
+  };
+  c.addEventListener('pointerup', end);
+  c.addEventListener('pointercancel', end);
+
+  $('#annot').addEventListener('click', async (e) => {
+    const b = e.target.closest('button');
+    if (!b) return;
+    if (b.dataset.tool) { annot.tool = b.dataset.tool; for (const x of b.parentNode.children) x.classList.toggle('on', x === b); }
+    if (b.dataset.color) { annot.color = b.dataset.color; for (const x of b.parentNode.children) x.classList.toggle('on', x === b); }
+    const act = b.dataset.annot;
+    if (act === 'undo') { annot.shapes.pop(); drawAnnot(); }
+    if (act === 'clear') { annot.shapes = []; drawAnnot(); }
+    if (act === 'cancel') closeAnnot(null);
+    if (act === 'done') closeAnnot({ blob: await canvasBlob(c), shapes: annot.shapes });
+  });
+  $('#annot').addEventListener('close', () => closeAnnot(null));
 }
 
 /* ---------- picking positions on the map ---------- */
@@ -828,15 +1155,66 @@ function onMapClick(e) {
 
 /* ---------- import / export ---------- */
 
-function exportJson() {
-  const items = all().map(clean);
-  const blob = new Blob([JSON.stringify(items, null, 2) + '\n'], { type: 'application/json' });
-  const a = el('a', { href: URL.createObjectURL(blob), download: 'lineups.json' });
+const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
+  let c = n;
+  for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+  return c >>> 0;
+});
+function crc32(bytes) {
+  let c = 0xffffffff;
+  for (const b of bytes) c = CRC_TABLE[(c ^ b) & 0xff] ^ (c >>> 8);
+  return (c ^ 0xffffffff) >>> 0;
+}
+/** Minimal ZIP (stored, no compression) — images are already compressed. */
+function makeZip(files) {
+  const enc = new TextEncoder();
+  const parts = [], central = [];
+  let offset = 0;
+  for (const { name, data } of files) {
+    const nm = enc.encode(name), crc = crc32(data);
+    const lh = new DataView(new ArrayBuffer(30));
+    lh.setUint32(0, 0x04034b50, true); lh.setUint16(4, 20, true); lh.setUint16(6, 0x0800, true);
+    lh.setUint16(12, 0x21, true); lh.setUint32(14, crc, true); lh.setUint32(18, data.length, true);
+    lh.setUint32(22, data.length, true); lh.setUint16(26, nm.length, true);
+    parts.push(lh, nm, data);
+    const ch = new DataView(new ArrayBuffer(46));
+    ch.setUint32(0, 0x02014b50, true); ch.setUint16(4, 20, true); ch.setUint16(6, 20, true); ch.setUint16(8, 0x0800, true);
+    ch.setUint16(14, 0x21, true); ch.setUint32(16, crc, true); ch.setUint32(20, data.length, true);
+    ch.setUint32(24, data.length, true); ch.setUint16(28, nm.length, true); ch.setUint32(42, offset, true);
+    central.push(ch, nm);
+    offset += 30 + nm.length + data.length;
+  }
+  const size = central.reduce((t, p) => t + p.byteLength, 0);
+  const end = new DataView(new ArrayBuffer(22));
+  end.setUint32(0, 0x06054b50, true); end.setUint16(8, files.length, true); end.setUint16(10, files.length, true);
+  end.setUint32(12, size, true); end.setUint32(16, offset, true);
+  return new Blob([...parts, ...central, end], { type: 'application/zip' });
+}
+
+function download(blob, name) {
+  const a = el('a', { href: URL.createObjectURL(blob), download: name });
   document.body.append(a);
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(a.href), 5000);
-  toast(`ส่งออก ${items.length} lineup แล้ว — เอาไฟล์ไปแทน data/lineups.json`);
+}
+
+async function exportJson() {
+  const items = all().map(clean);
+  const json = JSON.stringify(items, null, 2) + '\n';
+  const paths = [...new Set(items.flatMap(mediaPaths))].filter((p) => localUrls.has(p));
+  if (!paths.length) {
+    download(new Blob([json], { type: 'application/json' }), 'lineups.json');
+    toast(`ส่งออก ${items.length} lineup แล้ว — เอาไฟล์ไปแทน data/lineups.json`);
+    return;
+  }
+  const files = [{ name: 'data/lineups.json', data: new TextEncoder().encode(json) }];
+  for (const p of paths) {
+    const rec = await mediaDb.get(p).catch(() => null);
+    if (rec?.blob) files.push({ name: p, data: new Uint8Array(await rec.blob.arrayBuffer()) });
+  }
+  download(makeZip(files), 'lineups-export.zip');
+  toast(`ส่งออก ${items.length} lineup + ${files.length - 1} รูป — แตก zip ลงโฟลเดอร์ repo (ทับไฟล์เดิม) แล้ว push`);
 }
 
 async function importJson(file) {
@@ -907,9 +1285,51 @@ function bindUi() {
 
   // editor
   const form = $('#editForm');
-  form.elements.agent.addEventListener('input', (e) => fillAbilityList(e.target.value));
+  const fe = form.elements;
+  for (const n of ['side', 'site', 'type']) fe[n].addEventListener('change', updateTitle);
+  fe.title.addEventListener('input', () => {
+    const v = fe.title.value.trim();
+    state.editing.titleManual = !!v && v !== autoTitle(readForm());
+    updateTitle();
+  });
+  $('#btnAutoTitle').addEventListener('click', () => { state.editing.titleManual = false; updateTitle(); });
+  fe.throwSel.addEventListener('change', () => {
+    $('#throwOtherWrap').hidden = fe.throwSel.value !== '__other';
+    if (fe.throwSel.value === '__other') fe.throw.focus();
+    renderShots();
+  });
+  fe.throw.addEventListener('input', renderShots);
+  $('#shotFile').addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (file && state.editing?.activeShot) setShotFile(state.editing.activeShot, file);
+    e.target.value = '';
+  });
+  for (const box of document.querySelectorAll('#editor .shot')) {
+    box.addEventListener('click', () => { state.editing.activeShot = box.dataset.kind; renderShots(); });
+    box.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('drop'); });
+    box.addEventListener('dragleave', () => box.classList.remove('drop'));
+    box.addEventListener('drop', (e) => {
+      e.preventDefault();
+      box.classList.remove('drop');
+      const file = e.dataTransfer?.files?.[0];
+      if (file) setShotFile(box.dataset.kind, file);
+    });
+  }
+  document.addEventListener('paste', (e) => {
+    if (!$('#editor').open || $('#annot').open) return;
+    const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
+    if (!item) return;
+    e.preventDefault();
+    const ed = state.editing;
+    const kind = ed.activeShot || (!ed.shots.stand ? 'stand' : !ed.shots.aim ? 'aim' : 'stand');
+    setShotFile(kind, item.getAsFile());
+  });
+  bindAnnot();
   $('#btnRepick').addEventListener('click', () => {
     const d = readForm();
+    d._shots = state.editing.shots;
+    d._titleManual = state.editing.titleManual;
+    d._restText = fe.media.value;
     startPick(d, true);
   });
   $('#btnDelete').addEventListener('click', () => {
@@ -917,16 +1337,20 @@ function bindUi() {
     if (!d?.id) return;
     if (!confirm(`ลบ “${d.title || 'lineup นี้'}”?`)) return;
     deleteLineup(d.id);
+    cleanLocalMedia();
     $('#editor').close();
     render();
     toast('ลบแล้ว — export เพื่ออัปเดตไฟล์ใน repo');
   });
-  form.addEventListener('submit', (e) => {
+  form.addEventListener('submit', async (e) => {
     e.preventDefault();
     const d = readForm();
-    if (!d.title) { toast('ใส่ชื่อ lineup ก่อน'); form.elements.title.focus(); return; }
     if (!d.map) { toast('เลือกแมพก่อน'); return; }
+    if (!d.title) d.title = autoTitle(d) || 'Lineup';
+    d.id ||= newId();
+    try { d.media = await buildMedia(d); } catch (err) { toast('บันทึกรูปไม่ได้: ' + err.message); return; }
     saveLineup(d);
+    cleanLocalMedia();
     $('#editor').close();
     state.map = canonMap(d.map) || d.map;
     store.set(LS.lastMap, state.map);
@@ -972,9 +1396,10 @@ async function init() {
   state.maps = maps;
   state.agents = agents;
   state.base = base;
+  await loadLocalMedia();
   pruneLocal();
+  cleanLocalMedia();
 
-  $('#agentList').replaceChildren(...agents.map((a) => el('option', { value: a.name, label: a.role })));
 
   const h = readHash();
   const firstWithData = all().find((l) => l.map)?.map;

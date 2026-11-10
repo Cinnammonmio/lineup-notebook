@@ -6,7 +6,7 @@
  * - คลิปวิดีโอ: ไม่แคช โหลดตอนกดดูเท่านั้น (ไฟล์ใหญ่)
  * เปลี่ยน VERSION เมื่ออยากล้างแคชทั้งหมด
  */
-const VERSION = 'v2';
+const VERSION = 'v4';
 const SHELL = 'lp-shell-' + VERSION;
 const RUNTIME = 'lp-runtime-' + VERSION;
 const SHELL_FILES = [

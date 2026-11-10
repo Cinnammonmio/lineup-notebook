@@ -67,6 +67,29 @@
   <dialog id="detail" class="sheet detail" aria-label="รายละเอียด lineup"></dialog>
   <dialog id="zoom" class="zoom" aria-label="รูปขยาย (แตะเพื่อปิด)"></dialog>
 
+  <dialog id="annot" class="annot" aria-label="ไฮไลต์รูป">
+    <div class="annot-bar">
+      <div class="annot-tools" role="group" aria-label="เครื่องมือ">
+        <button type="button" data-tool="circle" class="on" title="วงกลม">◯</button>
+        <button type="button" data-tool="arrow" title="ลูกศร">➜</button>
+        <button type="button" data-tool="pen" title="ปากกา">✎</button>
+      </div>
+      <div class="annot-colors" role="group" aria-label="สี">
+        <button type="button" data-color="#ff4655" class="on" style="--c:#ff4655" aria-label="แดง"></button>
+        <button type="button" data-color="#ffd23f" style="--c:#ffd23f" aria-label="เหลือง"></button>
+        <button type="button" data-color="#00ff9c" style="--c:#00ff9c" aria-label="เขียว"></button>
+        <button type="button" data-color="#ffffff" style="--c:#ffffff" aria-label="ขาว"></button>
+      </div>
+      <span class="grow"></span>
+      <button type="button" class="btn sm" data-annot="undo">↶ ย้อน</button>
+      <button type="button" class="btn sm" data-annot="clear">ล้าง</button>
+      <button type="button" class="btn sm" data-annot="cancel">ยกเลิก</button>
+      <button type="button" class="btn sm primary" data-annot="done">เสร็จ</button>
+    </div>
+    <div class="annot-stage"><canvas id="annotCanvas"></canvas></div>
+  </dialog>
+  <input type="file" id="shotFile" accept="image/*" hidden>
+
   <dialog id="editor" class="sheet" aria-labelledby="editTitle">
     <form id="editForm" novalidate>
       <header class="sheet-head">
@@ -74,36 +97,65 @@
         <button type="button" class="btn icon" data-close aria-label="ปิด">✕</button>
       </header>
       <div class="sheet-body form">
-        <label>ชื่อ lineup
-          <input name="title" required placeholder="เช่น Molly A default จาก Tree" autocomplete="off">
-        </label>
-        <div class="grid2">
-          <label>แมพ<select name="map" required></select></label>
-          <label>เอเจนต์<input name="agent" list="agentList" placeholder="เช่น Brimstone" autocomplete="off"></label>
-          <label>สกิล<input name="ability" list="abilityList" placeholder="เช่น Incendiary" autocomplete="off"></label>
+        <p id="mobileWarn" class="warn-box" hidden>คุณกำลังแก้บนมือถือ — ข้อมูลจะเก็บอยู่แค่ในเครื่องนี้ ถ้าจะให้ทุกเครื่องเห็นต้อง export แล้ว push จากคอม</p>
+        <div class="field">
+          <span class="lbl">แมพ</span>
+          <div id="pickMap" class="pick-row" role="radiogroup" aria-label="แมพ"></div>
+        </div>
+        <div class="field">
+          <span class="lbl">เอเจนต์</span>
+          <div id="pickAgent" class="pick-row agents" role="radiogroup" aria-label="เอเจนต์"></div>
+        </div>
+        <div class="field">
+          <span class="lbl">สกิล</span>
+          <div id="pickAbility" class="pick-row abilities" role="radiogroup" aria-label="สกิล"></div>
+        </div>
+        <div class="grid3">
           <label>ฝั่ง<select name="side"><option value="attack">บุก</option><option value="defense">รับ</option></select></label>
           <label>ไซต์<select name="site"></select></label>
           <label>ประเภท<select name="type"></select></label>
         </div>
+        <label>ชื่อ lineup <span class="auto-hint" id="titleMode"></span>
+          <span class="title-row">
+            <input name="title" placeholder="ตั้งให้อัตโนมัติจากตัวเลือกด้านบน" autocomplete="off">
+            <button type="button" class="btn sm" id="btnAutoTitle" title="ใช้ชื่ออัตโนมัติ">↺ อัตโนมัติ</button>
+          </span>
+        </label>
         <div class="pos-row">
           <span>จุดยืน: <b id="posFrom" class="no">ยังไม่ตั้ง</b></span>
           <span>จุดตก: <b id="posTo" class="no">ยังไม่ตั้ง</b></span>
           <button type="button" class="btn sm" id="btnRepick">เลือกตำแหน่งบนแมพ</button>
         </div>
+        <div class="grid2">
+          <label>การปา
+            <select name="throwSel">
+              <option value="">—</option>
+              <option value="ปาปกติ">ปาปกติ</option>
+              <option value="กระโดดแล้วปา">กระโดดแล้วปา</option>
+              <option value="__other">อื่น ๆ (พิมพ์เอง)</option>
+            </select>
+          </label>
+          <label id="throwOtherWrap" hidden>การปา (พิมพ์เอง)
+            <input name="throw" placeholder="เช่น วิ่งกระโดดแล้วปา" autocomplete="off">
+          </label>
+        </div>
+        <div class="field">
+          <span class="lbl">รูปจุดยืน / จุดเล็ง <span class="muted-s">แตะเพื่อเลือกรูป หรือกด Ctrl+V วางภาพแคป</span></span>
+          <div class="shots">
+            <div class="shot" data-kind="stand"></div>
+            <div class="shot" data-kind="aim"></div>
+          </div>
+        </div>
         <label>วิธีทำ (ทีละขั้น)
           <textarea name="steps" rows="4" placeholder="1. ยืนชิดมุมกล่องซ้าย&#10;2. เล็งเป้าไว้ที่ปลายเสา&#10;3. ปาปกติ"></textarea>
         </label>
-        <label>การปา / ยิง
-          <input name="throw" placeholder="เช่น ปาปกติ, กระโดดแล้วปา" autocomplete="off">
-        </label>
-        <label>รูป / คลิป (บรรทัดละ 1 อัน ใส่คำอธิบายต่อท้ายด้วย | ได้)
-          <textarea name="media" rows="3" placeholder="media/ascent/brim-a-molly-default-stand.webp | จุดยืน&#10;media/ascent/brim-a-molly-default-aim.webp | จุดเล็ง&#10;media/ascent/brim-a-molly-default.mp4 | คลิป"></textarea>
+        <label>คลิป / รูปอื่น ๆ (บรรทัดละ 1 อัน ใส่คำอธิบายต่อท้ายด้วย | ได้)
+          <textarea name="media" rows="2" placeholder="media/ascent/brim-a-molly-default.mp4 | คลิป"></textarea>
         </label>
         <label>แท็ก (คั่นด้วยจุลภาค ,)
           <input name="tags" placeholder="เช่น ใช้บ่อย, one-way" autocomplete="off">
         </label>
-        <p id="mobileWarn" class="warn-box" hidden>คุณกำลังแก้บนมือถือ — ข้อมูลจะเก็บอยู่แค่ในเครื่องนี้ ถ้าจะให้ทุกเครื่องเห็นต้อง export แล้ว push จากคอม</p>
-        <p class="hint">บันทึกแล้วจะเก็บในเบราว์เซอร์เครื่องนี้ก่อน กด “ส่งออก lineups.json” แล้วเอาไฟล์ไปแทน data/lineups.json ใน repo เพื่อให้ทุกเครื่องเห็น</p>
+        <p class="hint">บันทึกแล้วจะเก็บในเบราว์เซอร์เครื่องนี้ก่อน (รวมรูป) กด “ส่งออก” จะได้ไฟล์ zip ที่มี lineups.json + รูป เอาไปแตกในโฟลเดอร์ repo แล้ว push เพื่อให้ทุกเครื่องเห็น</p>
       </div>
       <footer class="sheet-foot">
         <button type="button" class="btn danger" id="btnDelete">ลบ</button>
@@ -114,8 +166,6 @@
     </form>
   </dialog>
 
-  <datalist id="agentList"></datalist>
-  <datalist id="abilityList"></datalist>
   <input type="file" id="importFile" accept="application/json,.json" hidden>
   <div id="toast" class="toast" popover="manual" role="status"></div>
 
