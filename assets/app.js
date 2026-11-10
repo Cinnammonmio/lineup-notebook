@@ -321,6 +321,7 @@ function render() {
 
 function renderMaps() {
   const box = $('#maps');
+  const keepLeft = box.scrollLeft;
   const items = all();
   box.replaceChildren();
   for (const name of mapNames()) {
@@ -336,7 +337,8 @@ function renderMaps() {
     n ? el('span', { class: 'n', text: String(n) }) : null));
   }
   const on = box.querySelector('.on');
-  if (on) box.scrollTo({ left: on.offsetLeft - 16 - (box.clientWidth - on.offsetWidth) / 2, behavior: 'instant' });
+  box.scrollLeft = keepLeft;
+  scrollIntoRowIfHidden(box, on);
 }
 
 function lineEls(l, cls, svg, pins, interactive) {
@@ -416,6 +418,7 @@ function renderAgents() {
   const list = state.agents.map((a) => ({ name: a.name, icon: a.icon }));
   for (const l of all()) if (l.agent && !list.some((a) => norm(a.name) === norm(l.agent))) list.push({ name: l.agent });
   list.sort((x, y) => x.name.localeCompare(y.name));
+  const keepLeft = row.scrollLeft;
   row.replaceChildren();
   row.hidden = !list.length;
   for (const a of list) {
@@ -430,16 +433,25 @@ function renderAgents() {
     a.icon ? el('img', { src: a.icon, alt: '', loading: 'lazy' }) : el('span', { text: a.name }),
     n ? el('span', { class: 'n', text: String(n) }) : null));
   }
-  // on first render, bring the first selected agent into view (later taps keep the scroll position)
-  const on = row.querySelector('.on');
-  if (on && !row.dataset.scrolled) {
-    row.dataset.scrolled = '1';
-    row.scrollTo({ left: on.offsetLeft - (row.clientWidth - on.offsetWidth) / 2, behavior: 'instant' });
+  row.scrollLeft = keepLeft;
+  if (!row.dataset.scrolled) { row.dataset.scrolled = '1'; scrollIntoRowIfHidden(row, row.querySelector('.on')); }
+}
+
+/** Scroll a horizontal row only when the item is (partly) off screen — never move what the user just tapped. */
+function scrollIntoRowIfHidden(row, item) {
+  if (!item) return;
+  const left = item.offsetLeft - row.offsetLeft;
+  if (left < row.scrollLeft || left + item.offsetWidth > row.scrollLeft + row.clientWidth) {
+    row.scrollLeft = left - (row.clientWidth - item.offsetWidth) / 2;
   }
 }
 
+const SIDE_CYCLE = { all: 'attack', attack: 'defense', defense: 'all' };
 function renderFilters() {
-  for (const b of document.querySelectorAll('#side button')) b.classList.toggle('on', b.dataset.v === state.f.side);
+  const b = $('#side');
+  b.textContent = state.f.side === 'all' ? 'ทั้งหมด' : SIDE_LABEL[state.f.side];
+  b.className = 'side-btn ' + state.f.side;
+  b.setAttribute('aria-label', 'ฝั่ง: ' + b.textContent + ' (แตะเพื่อสลับ)');
 }
 
 function chips(l) {
@@ -882,8 +894,8 @@ function bindUi() {
   // filters
   $('#side').addEventListener('click', (e) => {
     e.stopPropagation();
-    const v = e.target.closest('button')?.dataset.v;
-    if (v) { state.f.side = v; render(); }
+    state.f.side = SIDE_CYCLE[state.f.side] || 'all';
+    render();
   });
 
   // dialogs: click on backdrop closes
