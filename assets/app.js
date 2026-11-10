@@ -15,7 +15,7 @@ const LS = {
   local: 'lp.local.v1',
   practiced: 'lp.practiced.v1',
   lastMap: 'lp.lastMap',
-  maps: 'lp.api.maps.v2',
+  maps: 'lp.api.maps.v3',
   agent: 'lp.agent',
   agents: 'lp.api.agents.v1',
 };
@@ -112,7 +112,7 @@ const state = {
   local: store.get(LS.local, {}),
   practiced: store.get(LS.practiced, {}),
   map: null,
-  f: { agents: new Set(store.get(LS.agent, null) ? [store.get(LS.agent, null)] : []), side: 'all', site: 'all', type: 'all', q: '', todo: false },
+  f: { agents: new Set([store.get(LS.agent, [])].flat().filter((x) => typeof x === 'string')), side: 'all', site: 'all', type: 'all', q: '', todo: false },
   selected: null,
   pick: null,
   editing: null,
@@ -144,17 +144,22 @@ function pickMaps(arr) {
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** Site letters (A/B/C) on the minimap, from valorant-api callouts (world coords → 0–1). */
+/** Labels on the minimap — site letters A/B/C and ATTACKER/DEFENDER spawns — from valorant-api callouts (world coords → 0–1). */
 function mapSites(m) {
   const k = ['xMultiplier', 'yMultiplier', 'xScalarToAdd', 'yScalarToAdd'];
   if (!k.every((x) => typeof m[x] === 'number')) return [];
   const acc = {};
   for (const c of m.callouts || []) {
-    if (c.regionName !== 'Site' || !/^[ABC]$/.test(c.superRegionName) || !c.location) continue;
+    if (!c.location) continue;
+    let key = null;
+    if (c.regionName === 'Site' && /^[ABC]$/.test(c.superRegionName)) key = c.superRegionName;
+    else if (/attack/i.test(c.superRegionName) && /spawn/i.test(c.regionName)) key = 'ATTACKER';
+    else if (/defen/i.test(c.superRegionName) && /spawn/i.test(c.regionName)) key = 'DEFENDER';
+    if (!key) continue;
     const x = c.location.y * m.xMultiplier + m.xScalarToAdd;
     const y = c.location.x * m.yMultiplier + m.yScalarToAdd;
     if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) continue;
-    (acc[c.superRegionName] ||= []).push({ x, y });
+    (acc[key] ||= []).push({ x, y });
   }
   return Object.entries(acc).sort().map(([name, pts]) => ({
     name,
@@ -165,7 +170,8 @@ function mapSites(m) {
 
 function siteLabels(m, box) {
   for (const st of m?.sites || []) {
-    box.append(el('span', { class: 'site-lbl', style: `left:${st.x * 100}%;top:${st.y * 100}%`, text: st.name }));
+    const kind = st.name === 'ATTACKER' ? ' spawn atk' : st.name === 'DEFENDER' ? ' spawn def' : '';
+    box.append(el('span', { class: 'site-lbl' + kind, style: `left:${st.x * 100}%;top:${st.y * 100}%`, text: st.name }));
   }
 }
 
@@ -388,9 +394,17 @@ function hover(id) {
   }
 }
 
-function setAgent(key) {
-  state.f.agents = new Set(key ? [key] : []);
-  store.set(LS.agent, key || null);
+/** Tap = add/remove one agent. Nothing selected = every agent. */
+function toggleAgent(key) {
+  if (state.f.agents.has(key)) state.f.agents.delete(key); else state.f.agents.add(key);
+  saveAgents();
+}
+function setAgents(keys) {
+  state.f.agents = new Set(keys);
+  saveAgents();
+}
+function saveAgents() {
+  store.set(LS.agent, [...state.f.agents]);
   render();
 }
 
@@ -411,13 +425,17 @@ function renderAgents() {
     row.append(el('button', {
       type: 'button', class: 'ag' + (on ? ' on' : '') + (n ? ' has' : '') + (a.icon ? '' : ' txt'),
       'aria-pressed': String(on), title: a.name, 'aria-label': a.name + (n ? ` (${n})` : ''),
-      onclick: () => setAgent(on ? null : key),
+      onclick: () => toggleAgent(key),
     },
     a.icon ? el('img', { src: a.icon, alt: '', loading: 'lazy' }) : el('span', { text: a.name }),
     n ? el('span', { class: 'n', text: String(n) }) : null));
   }
+  // on first render, bring the first selected agent into view (later taps keep the scroll position)
   const on = row.querySelector('.on');
-  if (on) row.scrollTo({ left: on.offsetLeft - (row.clientWidth - on.offsetWidth) / 2, behavior: 'instant' });
+  if (on && !row.dataset.scrolled) {
+    row.dataset.scrolled = '1';
+    row.scrollTo({ left: on.offsetLeft - (row.clientWidth - on.offsetWidth) / 2, behavior: 'instant' });
+  }
 }
 
 function renderFilters() {
@@ -441,11 +459,16 @@ function renderList() {
   const total = all().filter((l) => norm(l.map) === norm(state.map)).length;
   const list = visible().sort(byListOrder);
   const cnt = $('#count');
-  const agentKey = [...state.f.agents][0];
-  const agentName = agentKey && (agentOf(agentKey)?.name || agentKey);
+  const picked = [...state.f.agents].map((k) => agentOf(k)?.name || k);
+  const agentName = picked.length ? picked.join(', ') : '';
+  const withLineups = [...new Set(all().filter((l) => norm(l.map) === norm(state.map) && l.agent).map((l) => norm(l.agent)))];
   cnt.replaceChildren(
-    el('span', { class: 'grow', text: (agentName ? agentName + ' · ' : '') + (total ? `${list.length} จาก ${total} lineup บน ${state.map}` : '') }),
-    ...(agentName ? [el('button', { type: 'button', class: 'reset-ag', onclick: () => setAgent(null) }, '✕ ทุกเอเจนต์')] : []));
+    el('span', { class: 'grow cnt-text', text: (picked.length ? (picked.length > 2 ? `${picked.length} เอเจนต์` : agentName) : 'ทุกเอเจนต์') + ` · ${list.length} lineup` }),
+    ...(picked.length
+      ? [el('button', { type: 'button', class: 'reset-ag', onclick: () => setAgents([]) }, 'ดูทุกเอเจนต์')]
+      : withLineups.length > 1
+        ? [el('button', { type: 'button', class: 'reset-ag', title: 'เลือกทุกเอเจนต์ที่มี lineup บนแมพนี้', onclick: () => setAgents(withLineups) }, 'เลือกตัวที่มี lineup')]
+        : []));
   ul.replaceChildren();
 
   if (!list.length) {
@@ -470,8 +493,12 @@ function renderList() {
       el('span', { class: 'ab side-' + (l.side || 'none') }, icon ? el('img', { src: icon, alt: '', loading: 'lazy' }) : '◆'),
       el('span', { class: 'card-body' },
         el('span', { class: 'card-title', text: l.title || '(ไม่มีชื่อ)' }),
-        el('span', { class: 'card-meta', text: [l.agent, l.ability].filter(Boolean).join(' · ') || '—' }),
-        el('span', { class: 'chips' }, chips(l)))),
+        el('span', { class: 'card-meta' },
+          l.side ? el('i', { class: 'side-dot ' + l.side, title: SIDE_LABEL[l.side] }) : null,
+          [l.ability || l.agent, l.site && 'ไซต์ ' + l.site, TYPE_LABEL[l.type]].filter(Boolean).join(' · ') || '—'),
+        l.example || l._local ? el('span', { class: 'chips' },
+          l.example ? el('span', { class: 'chip ex', text: 'ตัวอย่าง' }) : null,
+          l._local ? el('span', { class: 'chip warn', text: 'ยังไม่ export' }) : null) : null)),
       el('button', {
         type: 'button', class: 'tick' + (done ? ' on' : ''), 'aria-pressed': String(done),
         title: done ? 'ซ้อมแล้ว (แตะเพื่อยกเลิก)' : 'ทำเครื่องหมายว่าซ้อมแล้ว',
@@ -854,15 +881,10 @@ function bindUi() {
 
   // filters
   $('#side').addEventListener('click', (e) => {
+    e.stopPropagation();
     const v = e.target.closest('button')?.dataset.v;
     if (v) { state.f.side = v; render(); }
   });
-  fillOptions($('#site'), [['all', 'ทุกไซต์'], ...SITES.map((s) => [s, 'ไซต์ ' + s])], 'all');
-  fillOptions($('#type'), [['all', 'ทุกประเภท'], ...TYPES], 'all');
-  $('#site').addEventListener('change', (e) => { state.f.site = e.target.value; render(); });
-  $('#type').addEventListener('change', (e) => { state.f.type = e.target.value; render(); });
-  $('#q').addEventListener('input', (e) => { state.f.q = e.target.value; render(); });
-  $('#onlyTodo').addEventListener('change', (e) => { state.f.todo = e.target.checked; render(); });
 
   // dialogs: click on backdrop closes
   for (const d of [$('#detail'), $('#editor')]) {
