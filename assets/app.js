@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.11.1';
+const APP_VERSION = '1.11.2';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -1159,7 +1159,8 @@ const Z_MAX = 6;
 
 function zoom(src, caption, badge) {
   const z = $('#zoom');
-  zm.img = el('img', { src: mediaSrc(src), alt: caption || '', draggable: 'false' });
+  zm.bw = zm.bh = 0;
+  zm.img = el('img', { src: mediaSrc(src), alt: caption || '', draggable: 'false', onload: () => { zoomFit(); zoomApply(); } });
   zm.stage = el('div', { class: 'zoom-stage' }, zm.img);
   const btn = (t, label, fn) => el('button', { type: 'button', class: 'zoom-btn', title: label, 'aria-label': label, onclick: (e) => { e.stopPropagation(); fn(); } }, t);
   const center = () => { const r = zm.stage.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
@@ -1176,16 +1177,29 @@ function zoom(src, caption, badge) {
   z.showModal();
 }
 
+/** Size the picture to fit the screen at 1×. */
+function zoomFit() {
+  const { img, stage } = zm;
+  if (!img?.naturalWidth) return;
+  const k = Math.min(stage.clientWidth / img.naturalWidth, stage.clientHeight / img.naturalHeight);
+  zm.bw = img.naturalWidth * k;
+  zm.bh = img.naturalHeight * k;
+}
 function zoomApply(animate) {
   const { img, stage } = zm;
   if (!img) return;
+  if (!zm.bw) zoomFit();
+  const w = (zm.bw || img.offsetWidth) * zm.s, h = (zm.bh || img.offsetHeight) * zm.s;
   // keep the picture on screen: pan only as far as the zoomed image overflows the stage
-  const mx = Math.max(0, (img.offsetWidth * zm.s - stage.clientWidth) / 2);
-  const my = Math.max(0, (img.offsetHeight * zm.s - stage.clientHeight) / 2);
+  const mx = Math.max(0, (w - stage.clientWidth) / 2);
+  const my = Math.max(0, (h - stage.clientHeight) / 2);
   zm.x = Math.min(mx, Math.max(-mx, zm.x));
   zm.y = Math.min(my, Math.max(-my, zm.y));
-  img.style.transition = animate ? 'transform .2s ease-out' : 'none';
-  img.style.transform = `translate(${zm.x}px, ${zm.y}px) scale(${zm.s})`;
+  // zoom by real layout size, not a CSS scale: the browser then draws the picture from its full
+  // resolution at every zoom level instead of enlarging a screen-sized copy (which looked blurry)
+  img.style.transition = animate ? 'width .2s ease-out, height .2s ease-out, transform .2s ease-out' : 'none';
+  if (zm.bw) { img.style.width = w + 'px'; img.style.height = h + 'px'; }
+  img.style.transform = `translate(${zm.x}px, ${zm.y}px)`;
   $('#zoom').classList.toggle('zoomed', zm.s > 1.01);
 }
 function zoomReset(animate) { zm.s = 1; zm.x = 0; zm.y = 0; zoomApply(animate); }
@@ -1399,7 +1413,8 @@ function canvasBlob(c) {
   }, 'image/webp', IMG_QUALITY));
 }
 /** Full HD: a normal 1920×1080 game screenshot keeps its native resolution. */
-const MAX_W = 1920;
+/** Up to 1440p width: 1080p and 1440p game screenshots keep their native resolution. */
+const MAX_W = 2560;
 /** Draw an image at w×h; big reductions are done in halving steps so text and lines don't turn jagged or blurry. */
 function drawScaled(img, w, h) {
   let src = img, sw = img.naturalWidth || img.width, sh = img.naturalHeight || img.height;
@@ -2459,7 +2474,7 @@ function bindUi() {
     }
   });
   $('#zoom').addEventListener('close', () => { zm.img = null; zm.stage = null; zm.pts.clear(); });
-  window.addEventListener('resize', () => { if ($('#zoom').open) zoomApply(); });
+  window.addEventListener('resize', () => { if ($('#zoom').open) { zoomFit(); zoomApply(); } });
 }
 
 const LANDSCAPE_PHONE = matchMedia('(orientation: landscape) and (max-height: 600px), (orientation: landscape) and (min-width: 900px)'); // phones in landscape and desktop share one layout
