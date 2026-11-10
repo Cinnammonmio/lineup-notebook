@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.4.0';
+const APP_VERSION = '1.4.1';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -21,6 +21,7 @@ const LS = {
   maps: 'lp.api.maps.v3',
   agent: 'lp.agent',
   gh: 'lp.github.v1',
+  fit: 'lp.detailFit',
   pushed: 'lp.pushed.v1',
   agents: 'lp.api.agents.v1',
 };
@@ -757,6 +758,10 @@ function openDetail(id) {
       el('div', { class: 'grow' },
         el('h2', { text: l.title || '(ไม่มีชื่อ)' }),
         el('div', { class: 'sub', text: [l.agent, l.ability, l.site && 'ไซต์ ' + l.site, l.throw].filter(Boolean).join(' · ') })),
+      el('button', {
+        type: 'button', class: 'btn icon land-only', title: 'สลับ เต็มช่อง / พอดีจอ', 'aria-label': 'สลับ เต็มช่อง / พอดีจอ',
+        onclick: () => { const fit = !d.classList.contains('fit'); d.classList.toggle('fit', fit); store.set(LS.fit, fit); },
+      }, '⤢'),
       el('button', { type: 'button', class: 'btn sm', onclick: () => { d.close(); openEditor(l); } }, '✎ แก้ไข'),
       navBtn('‹', 'lineup ก่อนหน้า', prev),
       navBtn('›', 'lineup ถัดไป', next),
@@ -774,6 +779,7 @@ function openDetail(id) {
         l.from || l.to ? miniMap(l) : null),
       rest.length ? section('คลิป / รูปอื่น ๆ', el('div', { class: 'gallery' }, rest.map(mediaEl))) : null)));
 
+  d.classList.toggle('fit', !!store.get(LS.fit, false));
   if (!d.open) d.showModal();
   d.querySelector('.sheet-body').scrollTop = 0;
 }
