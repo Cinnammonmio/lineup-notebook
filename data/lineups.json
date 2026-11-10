@@ -82,5 +82,38 @@
         "caption": "จุดเล็ง 2"
       }
     ]
+  },
+  {
+    "id": "mwb5e8x880vl",
+    "title": "Nanoswarm A · Entry",
+    "map": "Summit",
+    "agent": "Killjoy",
+    "ability": "Nanoswarm",
+    "side": "attack",
+    "site": "A",
+    "type": "entry",
+    "from": {
+      "x": 0.724,
+      "y": 0.581
+    },
+    "to": {
+      "x": 0.925,
+      "y": 0.476
+    },
+    "throw": "ปาปกติ",
+    "media": [
+      {
+        "src": "media/summit/killjoy-a-nanoswarm-mwb5e8x880vl-stand-vmwb5e8x8.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/summit/killjoy-a-nanoswarm-mwb5e8x880vl-stand2-vmwb5e8xi.webp",
+        "caption": "จุดยืน 2"
+      },
+      {
+        "src": "media/summit/killjoy-a-nanoswarm-mwb5e8x880vl-aim-vmwb5e8xn.webp",
+        "caption": "จุดเล็ง"
+      }
+    ]
   }
 ]
