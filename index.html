@@ -107,23 +107,39 @@
 
   <dialog id="annot" class="annot" aria-label="ไฮไลต์รูป">
     <div class="annot-bar">
-      <div class="annot-tools" role="group" aria-label="เครื่องมือ">
-        <button type="button" data-tool="circle" class="on" title="วงกลม">◯</button>
+      <div class="annot-group" role="group" aria-label="เครื่องมือ">
+        <button type="button" data-tool="circle" title="วงกลม">◯</button>
         <button type="button" data-tool="arrow" title="ลูกศร">➜</button>
         <button type="button" data-tool="pen" title="ปากกา">✎</button>
+        <button type="button" data-tool="crop" title="ครอปรูป">⬚</button>
       </div>
-      <div class="annot-colors" role="group" aria-label="สี">
-        <button type="button" data-color="#ff4655" class="on" style="--c:#ff4655" aria-label="แดง"></button>
+      <div class="annot-group annot-sizes annot-style" role="group" aria-label="ขนาดวงกลม">
+        <span class="annot-lbl">ขนาด</span>
+        <button type="button" data-size="s" title="วงกลมเล็ก">S</button>
+        <button type="button" data-size="m" title="วงกลมกลาง">M</button>
+        <button type="button" data-size="l" title="วงกลมใหญ่">L</button>
+      </div>
+      <div class="annot-group annot-style" role="group" aria-label="ความหนาเส้น">
+        <span class="annot-lbl">เส้น</span>
+        <button type="button" data-width="thin" title="บาง"><i class="lw" style="--lw:2px"></i></button>
+        <button type="button" data-width="mid" title="กลาง"><i class="lw" style="--lw:4px"></i></button>
+        <button type="button" data-width="thick" title="หนา"><i class="lw" style="--lw:7px"></i></button>
+        <button type="button" data-annot="dash" title="เส้นปะ"><i class="lw dash"></i></button>
+      </div>
+      <div class="annot-group annot-colors annot-style" role="group" aria-label="สี">
+        <button type="button" data-color="#ff4655" style="--c:#ff4655" aria-label="แดง"></button>
         <button type="button" data-color="#ffd23f" style="--c:#ffd23f" aria-label="เหลือง"></button>
         <button type="button" data-color="#00ff9c" style="--c:#00ff9c" aria-label="เขียว"></button>
         <button type="button" data-color="#ffffff" style="--c:#ffffff" aria-label="ขาว"></button>
       </div>
       <span class="grow"></span>
+      <button type="button" class="btn sm primary" data-annot="applycrop" hidden>✓ ใช้ครอป</button>
       <button type="button" class="btn sm" data-annot="undo">↶ ย้อน</button>
       <button type="button" class="btn sm" data-annot="clear">ล้าง</button>
       <button type="button" class="btn sm" data-annot="cancel">ยกเลิก</button>
       <button type="button" class="btn sm primary" data-annot="done">เสร็จ</button>
     </div>
+    <div class="annot-hint"></div>
     <div class="annot-stage"><canvas id="annotCanvas"></canvas></div>
   </dialog>
   <input type="file" id="shotFile" accept="image/*" hidden>
