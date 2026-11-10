@@ -640,3 +640,9 @@ dialog.annot::backdrop { background: #000; }
 .peek-shot figcaption { position: absolute; left: 4px; top: 4px; font-size: 10px; padding: 0 6px; border-radius: 999px; background: #000c; color: #fff; }
 .peek-none { display: grid; place-items: center; height: 100%; font-size: 11px; color: var(--muted); }
 .peek-open { align-self: stretch; }
+
+/* ---------- filter row: side / site / type / role ---------- */
+.filter-bar { display: flex; gap: 6px; align-items: center; flex: 0 0 auto; padding: 2px 0 2px; overflow-x: auto; scrollbar-width: none; }
+.filter-bar::-webkit-scrollbar { display: none; }
+.fsel { width: auto !important; min-height: 30px !important; padding: 2px 26px 2px 10px !important; font-size: 13px !important; border-radius: 999px !important; flex: 0 0 auto; }
+.fsel.on { border-color: var(--accent) !important; color: var(--accent); }

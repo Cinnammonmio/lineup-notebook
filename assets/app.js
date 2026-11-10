@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.9.0';
+const APP_VERSION = '1.10.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -20,6 +20,7 @@ const LS = {
   lastMap: 'lp.lastMap',
   maps: 'lp.api.maps.v4',
   role: 'lp.agentRole',
+  filters: 'lp.filters',
   agent: 'lp.agent',
   gh: 'lp.github.v1',
   fit: 'lp.detailFit',
@@ -119,7 +120,7 @@ const state = {
   local: store.get(LS.local, {}),
   practiced: store.get(LS.practiced, {}),
   map: null,
-  f: { agents: new Set([store.get(LS.agent, [])].flat().filter((x) => typeof x === 'string')), role: store.get(LS.role, 'all'), side: 'all', site: 'all', type: 'all', q: '', todo: false },
+  f: { agents: new Set([store.get(LS.agent, [])].flat().filter((x) => typeof x === 'string')), role: store.get(LS.role, 'all'), side: 'all', site: 'all', type: 'all', q: '', todo: false, ...store.get(LS.filters, {}) },
   selected: null,
   plan: null,
   peek: null,
@@ -480,6 +481,13 @@ function renderMap() {
   $('#mapWrap').classList.toggle('picking', !!p || !!state.smokePick);
 }
 
+/** Touch screens: a card tap shows the quick preview at the lineup's pin first; mouse: open it straight away. */
+const touchUi = () => matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
+function openFromCard(id) {
+  if (touchUi() && document.querySelector(`#pins .pin[data-id="${CSS.escape(id)}"]`)) peekAt(id);
+  else openDetail(id);
+}
+
 /* ---------- tap a pin: quick preview; pins close together become buttons to switch between ---------- */
 
 const PEEK_RADIUS = 30; // px: pins this close to the tapped one are offered too
@@ -643,7 +651,7 @@ function lineupCard(l, num) {
   return el('li', { class: 'card' + (state.selected === l.id ? ' sel' : ''), 'data-id': l.id, style: col ? `--ag:${col}` : null },
     el('button', {
       type: 'button', class: 'card-main',
-      onclick: () => openDetail(l.id),
+      onclick: () => openFromCard(l.id),
       onmouseenter: () => hover(l.id),
       onmouseleave: () => hover(null),
     },
@@ -708,7 +716,31 @@ function renderPlanList(ul, cnt) {
   }
 }
 
+function saveFilters() {
+  store.set(LS.filters, { side: state.f.side, site: state.f.site, type: state.f.type });
+  store.set(LS.role, state.f.role);
+}
+
+/** Filter row under the agent row: side, site, type and agent role. */
+function renderFilterBar() {
+  const bar = $('#filterBar');
+  bar.hidden = state.tab === 'plans' || !!activePlan();
+  if (bar.hidden) return;
+  const sel = (key, label, options) => el('select', {
+    class: 'fsel' + (state.f[key] !== 'all' ? ' on' : ''), 'aria-label': label, title: label,
+    onchange: (e) => { state.f[key] = e.target.value; saveFilters(); render(); },
+  }, options.map(([v, t]) => el('option', { value: v, text: t, selected: state.f[key] === v })));
+  const active = ['side', 'site', 'type', 'role'].some((k) => state.f[k] !== 'all');
+  bar.replaceChildren(
+    sel('side', 'ฝั่ง', [['all', 'ทุกฝั่ง'], ['attack', 'บุก'], ['defense', 'รับ']]),
+    sel('site', 'ไซต์', [['all', 'ทุกไซต์'], ...SITES.map((x) => [x, 'ไซต์ ' + x])]),
+    sel('type', 'ประเภท', [['all', 'ทุกประเภท'], ['entry', 'เปิดไซต์'], ['execute', 'Execute'], ['post-plant', 'Post-plant'], ['retake', 'รีเทค'], ['info', 'หาข้อมูล'], ['hold', 'ตั้งรับ'], ['smoke', 'Smoke'], ['other', 'อื่น ๆ']]),
+    sel('role', 'บทบาทเอเจนต์', [['all', 'ทุกบทบาท'], ['has', 'มี lineup'], ['controller', 'Controller'], ['duelist', 'Duelist'], ['initiator', 'Initiator'], ['sentinel', 'Sentinel']]),
+    active ? el('button', { type: 'button', class: 'reset-ag', onclick: () => { Object.assign(state.f, { side: 'all', site: 'all', type: 'all', role: 'all' }); saveFilters(); render(); } }, 'ล้าง') : null);
+}
+
 function renderList() {
+  renderFilterBar();
   if (state.tab !== 'plans' || state.plan) state.hoverPlan = null;
   const ul = $('#list');
   const cnt = $('#count');
@@ -746,14 +778,8 @@ function renderList() {
   const picked = [...state.f.agents].map((k) => agentOf(k)?.name || k);
   const agentName = picked.length ? picked.join(', ') : '';
   const withLineups = [...new Set(all().filter((l) => norm(l.map) === norm(state.map) && l.agent).map((l) => norm(l.agent)))];
-  const roleSel = el('select', {
-    class: 'role-filter', 'aria-label': 'กรองแถวเอเจนต์', title: 'กรองแถวเอเจนต์',
-    onchange: (e) => { state.f.role = e.target.value; store.set(LS.role, state.f.role); render(); },
-  }, [['all', 'ทุกบทบาท'], ['has', 'มี lineup'], ['controller', 'Controller'], ['duelist', 'Duelist'], ['initiator', 'Initiator'], ['sentinel', 'Sentinel']]
-    .map(([v, t]) => el('option', { value: v, text: t, selected: state.f.role === v })));
   cnt.replaceChildren(
     el('span', { class: 'grow cnt-text', text: (picked.length ? (picked.length > 2 ? `${picked.length} เอเจนต์` : agentName) : 'ทุกเอเจนต์') + ` · ${list.length} lineup` }),
-    roleSel,
     ...(picked.length
       ? [el('button', { type: 'button', class: 'reset-ag', onclick: () => setAgents([]) }, 'ดูทุกเอเจนต์')]
       : withLineups.length > 1
@@ -2317,6 +2343,7 @@ function bindUi() {
   $('#side').addEventListener('click', (e) => {
     e.stopPropagation();
     state.f.side = SIDE_CYCLE[state.f.side] || 'all';
+    saveFilters();
     render();
   });
 
