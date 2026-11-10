@@ -26,6 +26,7 @@ const TYPES = [
   ['retake', 'รีเทค'],
   ['info', 'หาข้อมูล'],
   ['hold', 'ตั้งรับ / หน่วงเวลา'],
+  ['smoke', 'จุดวาง smoke'],
   ['other', 'อื่น ๆ'],
 ];
 const TYPE_LABEL = Object.fromEntries(TYPES);
@@ -70,6 +71,7 @@ function setProps(n, props) {
     else n.setAttribute(k, v === true ? '' : v);
   }
 }
+const isMobile = () => (matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0) && innerWidth < 900;
 const safeHref = (u) => (/^\s*(javascript|vbscript|data:text)/i.test(u) ? '#' : u);
 
 function stable(v) {
@@ -347,7 +349,7 @@ function renderMap() {
   }
 
   const p = state.pick;
-  if (p?.draft.from) svg.append(svgEl('circle', { cx: p.draft.from.x * 1000, cy: p.draft.from.y * 1000, r: 13, class: 'tmp' }));
+  if (p?.draft?.from) svg.append(svgEl('circle', { cx: p.draft.from.x * 1000, cy: p.draft.from.y * 1000, r: 13, class: 'tmp' }));
   $('#mapWrap').classList.toggle('picking', !!p);
 }
 
@@ -557,6 +559,7 @@ function renderPos(d) {
   const set = (sel, v) => { const b = $(sel); b.textContent = v ? 'ตั้งแล้ว ✓' : 'ยังไม่ตั้ง'; b.className = v ? 'ok' : 'no'; };
   set('#posFrom', d.from);
   set('#posTo', d.to);
+  if (!d.from && d.to) $('#posFrom').textContent = 'ไม่มี (วางจากแมพ)';
 }
 
 function openEditor(src) {
@@ -588,6 +591,7 @@ function openEditor(src) {
   f.tags.value = (d.tags || []).join(', ');
   renderPos(d);
   $('#btnDelete').hidden = !exists;
+  $('#mobileWarn').hidden = !isMobile();
 
   const dlg = $('#editor');
   if (!dlg.open) dlg.showModal();
@@ -621,6 +625,7 @@ function readForm() {
 /* ---------- picking positions on the map ---------- */
 
 function startAdd() {
+  if (isMobile()) toast('แก้บนมือถือ: ข้อมูลจะอยู่แค่ในเครื่องนี้ ควรเพิ่มจากคอม');
   if (!state.map) { openEditor({}); return; }
   startPick({ map: state.map }, false);
 }
@@ -650,6 +655,9 @@ function updateBanner() {
   b.replaceChildren(
     el('span', { class: 'step', text: p.step === 'from' ? '1/2' : '2/2' }),
     el('span', { class: 'grow', text: p.step === 'from' ? 'แตะบนแมพตรงจุดที่ยืน' : 'แตะบนแมพตรงจุดที่สกิลไปตก' }),
+    p.step === 'from'
+      ? el('button', { type: 'button', class: 'btn sm', onclick: toOnlyPick, title: 'เช่น smoke ที่วางจากแมพ' }, 'ไม่มีจุดยืน')
+      : null,
     el('button', { type: 'button', class: 'btn sm', onclick: skipPick }, 'ข้าม'),
     el('button', { type: 'button', class: 'btn sm', onclick: cancelPick }, 'ยกเลิก'));
 }
@@ -665,6 +673,14 @@ function skipPick() {
   if (!p) return;
   const d = { ...p.prev, ...(p.draft.from ? { from: p.draft.from } : {}), map: state.map };
   finishPick(d);
+}
+function toOnlyPick() {
+  const p = state.pick;
+  if (!p) return;
+  p.draft.from = null;
+  p.step = 'to';
+  renderMap();
+  updateBanner();
 }
 function cancelPick() {
   const p = state.pick;

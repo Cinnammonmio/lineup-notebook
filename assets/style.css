@@ -256,6 +256,7 @@ dialog.sheet::backdrop { background: #05070acc; }
 .pos-row b { font-weight: 600; }
 .pos-row .ok { color: var(--accent); }
 .pos-row .no { color: var(--muted); }
+.warn-box { margin: 0; padding: 10px 12px; border-radius: 10px; font-size: 14px; color: var(--warn); background: color-mix(in srgb, var(--warn) 10%, transparent); border: 1px solid color-mix(in srgb, var(--warn) 40%, transparent); }
 .hint { font-size: 12px; color: var(--muted); margin: 0; }
 
 /* ---------- toast ---------- */

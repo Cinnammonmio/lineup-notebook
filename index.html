@@ -88,12 +88,12 @@
       </header>
       <div class="sheet-body form">
         <label>ชื่อ lineup
-          <input name="title" required placeholder="เช่น Recon A Main จากสปอว์น" autocomplete="off">
+          <input name="title" required placeholder="เช่น Molly A default จาก Tree" autocomplete="off">
         </label>
         <div class="grid2">
           <label>แมพ<select name="map" required></select></label>
-          <label>เอเจนต์<input name="agent" list="agentList" placeholder="เช่น Sova" autocomplete="off"></label>
-          <label>สกิล<input name="ability" list="abilityList" placeholder="เช่น Recon Bolt" autocomplete="off"></label>
+          <label>เอเจนต์<input name="agent" list="agentList" placeholder="เช่น Brimstone" autocomplete="off"></label>
+          <label>สกิล<input name="ability" list="abilityList" placeholder="เช่น Incendiary" autocomplete="off"></label>
           <label>ฝั่ง<select name="side"><option value="attack">บุก</option><option value="defense">รับ</option></select></label>
           <label>ไซต์<select name="site"></select></label>
           <label>ประเภท<select name="type"></select></label>
@@ -104,17 +104,18 @@
           <button type="button" class="btn sm" id="btnRepick">เลือกตำแหน่งบนแมพ</button>
         </div>
         <label>วิธีทำ (ทีละขั้น)
-          <textarea name="steps" rows="4" placeholder="1. ยืนชิดมุมกล่องซ้าย&#10;2. เล็งเป้าไว้ที่ปลายเสา&#10;3. ชาร์จ 2 ขีด ปาไป"></textarea>
+          <textarea name="steps" rows="4" placeholder="1. ยืนชิดมุมกล่องซ้าย&#10;2. เล็งเป้าไว้ที่ปลายเสา&#10;3. ปาปกติ"></textarea>
         </label>
         <label>การปา / ยิง
-          <input name="throw" placeholder="เช่น กระโดดแล้วปา, ชาร์จเต็ม เด้ง 1 ครั้ง" autocomplete="off">
+          <input name="throw" placeholder="เช่น ปาปกติ, กระโดดแล้วปา" autocomplete="off">
         </label>
         <label>รูป / คลิป (บรรทัดละ 1 อัน ใส่คำอธิบายต่อท้ายด้วย | ได้)
-          <textarea name="media" rows="3" placeholder="media/ascent/sova-a-stand.jpg | จุดยืน&#10;media/ascent/sova-a-aim.jpg | จุดเล็ง&#10;https://youtu.be/xxxxxxxxxxx?t=42"></textarea>
+          <textarea name="media" rows="3" placeholder="media/ascent/brim-a-molly-default-stand.webp | จุดยืน&#10;media/ascent/brim-a-molly-default-aim.webp | จุดเล็ง&#10;media/ascent/brim-a-molly-default.mp4 | คลิป"></textarea>
         </label>
         <label>แท็ก (คั่นด้วยจุลภาค ,)
           <input name="tags" placeholder="เช่น ใช้บ่อย, one-way" autocomplete="off">
         </label>
+        <p id="mobileWarn" class="warn-box" hidden>คุณกำลังแก้บนมือถือ — ข้อมูลจะเก็บอยู่แค่ในเครื่องนี้ ถ้าจะให้ทุกเครื่องเห็นต้อง export แล้ว push จากคอม</p>
         <p class="hint">บันทึกแล้วจะเก็บในเบราว์เซอร์เครื่องนี้ก่อน กด “ส่งออก lineups.json” แล้วเอาไฟล์ไปแทน data/lineups.json ใน repo เพื่อให้ทุกเครื่องเห็น</p>
       </div>
       <footer class="sheet-foot">
