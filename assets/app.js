@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.4.2';
+const APP_VERSION = '1.5.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -39,7 +39,7 @@ const TYPES = [
 const TYPE_LABEL = Object.fromEntries(TYPES);
 const SIDE_LABEL = { attack: 'บุก', defense: 'รับ' };
 const SITES = ['A', 'B', 'C', 'Mid'];
-const FIELDS = ['id', 'title', 'map', 'agent', 'ability', 'side', 'site', 'type', 'from', 'to', 'steps', 'throw', 'media', 'tags', 'example'];
+const FIELDS = ['id', 'title', 'map', 'agent', 'ability', 'side', 'site', 'type', 'from', 'to', 'steps', 'throw', 'media', 'layout', 'tags', 'example'];
 
 /* ---------- helpers ---------- */
 
@@ -607,15 +607,75 @@ const IMG_RE = /\.(png|jpe?g|webp|gif|avif|bmp)(\?|#|$)|^data:image\//i;
 const STAND_RE = /ยืน|stand/i;
 const AIM_RE = /เล็ง|aim|ปา|throw/i;
 
-/** Split media into the stand/aim image pair and everything else. */
+/** Split media into picture slots — stand, stand2 (below it), aim, aim2 — and everything else. */
 function splitMedia(list) {
   const imgs = list.filter((m) => IMG_RE.test(m.src));
-  const tagged = (re, suffix) => imgs.find((m) => re.test(m.caption || '') || new RegExp(`-${suffix}\\.\\w+$`, 'i').test(m.src));
-  let stand = tagged(STAND_RE, 'stand');
-  let aim = tagged(AIM_RE, 'aim');
-  if (!stand && !aim && imgs.length) { [stand, aim] = imgs; }
-  const rest = list.filter((m) => m !== stand && m !== aim);
-  return { stand, aim, rest };
+  const kindOf = (m) => {
+    const f = m.src.match(/-(stand|aim)(2)?\.\w+$/i);
+    if (f) return f[1].toLowerCase() + (f[2] || '');
+    const c = m.caption || '';
+    const two = /2\s*$/.test(c) ? '2' : '';
+    if (STAND_RE.test(c)) return 'stand' + two;
+    if (AIM_RE.test(c)) return 'aim' + two;
+    return null;
+  };
+  const out = {};
+  for (const m of imgs) { const k = kindOf(m); if (k && !out[k]) out[k] = m; }
+  if (!Object.keys(out).length && imgs.length) [out.stand, out.aim] = imgs;
+  for (const k of ['stand', 'aim']) if (!out[k] && out[k + '2']) { out[k] = out[k + '2']; delete out[k + '2']; }
+  const used = new Set(Object.values(out));
+  return { ...out, rest: list.filter((m) => !used.has(m)) };
+}
+
+/* ---------- picture board: stand | aim columns, each with 1–2 slots; dividers are draggable ---------- */
+
+const LAYOUT_DEFAULT = { col: 0.5, stand: 0.5, aim: 0.5 };
+const clampR = (v) => Math.round(Math.min(0.8, Math.max(0.2, v)) * 1000) / 1000;
+
+/** cols: [{ key: 'stand'|'aim', top: Node, bottom: Node|null }] · layout: { col, stand, aim } · onChange(layout) after a drag */
+function makeBoard(cols, layout, onChange) {
+  const lay = { ...LAYOUT_DEFAULT, ...layout };
+  const root = el('div', { class: 'board' });
+  const drag = (handle, axis, box, apply) => {
+    handle.addEventListener('pointerdown', (e) => {
+      e.preventDefault(); e.stopPropagation();
+      handle.setPointerCapture(e.pointerId);
+      handle.classList.add('dragging');
+      const move = (ev) => {
+        const r = box.getBoundingClientRect();
+        apply(clampR(axis === 'x' ? (ev.clientX - r.left) / r.width : (ev.clientY - r.top) / r.height));
+      };
+      const up = () => {
+        handle.removeEventListener('pointermove', move);
+        handle.classList.remove('dragging');
+        onChange?.({ ...lay });
+      };
+      handle.addEventListener('pointermove', move);
+      handle.addEventListener('pointerup', up, { once: true });
+      handle.addEventListener('pointercancel', up, { once: true });
+    });
+    handle.addEventListener('click', (e) => e.stopPropagation());
+  };
+  const colEls = cols.map((c) => {
+    const col = el('div', { class: 'bcol' });
+    const top = el('div', { class: 'bcell' }, c.top);
+    col.append(top);
+    if (c.bottom) {
+      const bottom = el('div', { class: 'bcell' }, c.bottom);
+      const hd = el('div', { class: 'hdiv', role: 'separator', 'aria-orientation': 'horizontal', title: 'ลากเพื่อปรับขนาด' });
+      const set = (r) => { lay[c.key] = r; top.style.flexGrow = r; bottom.style.flexGrow = 1 - r; };
+      set(lay[c.key]);
+      drag(hd, 'y', col, set);
+      col.append(hd, bottom);
+    }
+    return col;
+  });
+  const vd = el('div', { class: 'vdiv', role: 'separator', 'aria-orientation': 'vertical', title: 'ลากเพื่อปรับขนาด' });
+  const setCol = (r) => { lay.col = r; colEls[0].style.flexGrow = r; colEls[1].style.flexGrow = 1 - r; };
+  setCol(lay.col);
+  drag(vd, 'x', root, setCol);
+  root.append(colEls[0], vd, colEls[1]);
+  return root;
 }
 
 function pairFig(m, label, badge) {
@@ -729,6 +789,17 @@ function bindZoomStage(stage) {
   stage.addEventListener('click', () => { if (zm.closeOnClick) { zm.closeOnClick = false; $('#zoom').close(); } });
 }
 
+function detailBoard(l, stand, stand2, aim, aim2) {
+  // dividers can be dragged while viewing (not saved — the layout is set in the editor)
+  const b = makeBoard([
+    { key: 'stand', top: pairFig(stand, 'จุดยืน'), bottom: stand2 ? pairFig(stand2, 'จุดยืน 2') : null },
+    { key: 'aim', top: pairFig(aim, 'จุดเล็ง', l.throw), bottom: aim2 ? pairFig(aim2, 'จุดเล็ง 2') : null },
+  ], l.layout);
+  b.classList.add('pair');
+  b.append(el('span', { class: 'scroll-hint', 'aria-hidden': 'true', text: '▲ ปัดขึ้นดูวิธีทำ' }));
+  return b;
+}
+
 function neighbour(id, dir) {
   const list = visible().sort(byListOrder);
   const i = list.findIndex((x) => x.id === id);
@@ -746,7 +817,7 @@ function openDetail(id) {
   const d = $('#detail');
   const icon = iconFor(l);
   const media = (l.media || []).map(parseMedia).filter(Boolean);
-  const { stand, aim, rest } = splitMedia(media);
+  const { stand, stand2, aim, aim2, rest } = splitMedia(media);
   const showPair = stand || aim || l.from;
   const prev = neighbour(id, -1);
   const next = neighbour(id, 1);
@@ -770,8 +841,7 @@ function openDetail(id) {
       navBtn('›', 'lineup ถัดไป', next),
       el('button', { type: 'button', class: 'btn icon', 'aria-label': 'ปิด', onclick: () => d.close() }, '✕')),
     el('div', { class: 'sheet-body' },
-      showPair ? el('div', { class: 'pair' }, pairFig(stand, 'จุดยืน'), pairFig(aim, 'จุดเล็ง', l.throw),
-        el('span', { class: 'scroll-hint', 'aria-hidden': 'true', text: '▲ ปัดขึ้นดูวิธีทำ' })) : null,
+      showPair ? detailBoard(l, stand, stand2, aim, aim2) : null,
       el('div', { class: 'detail-cols' },
         el('div', { class: 'detail-text' },
           el('div', { class: 'chips' }, chips(l)),
@@ -896,7 +966,8 @@ function shotPath(d, kind, blob, oldSrc) {
 
 /* ---------- editor ---------- */
 
-const SHOT_LABEL = { stand: 'จุดยืน', aim: 'จุดเล็ง' };
+const SHOT_KINDS = ['stand', 'stand2', 'aim', 'aim2'];
+const SHOT_LABEL = { stand: 'จุดยืน', stand2: 'จุดยืน 2', aim: 'จุดเล็ง', aim2: 'จุดเล็ง 2' };
 const THROWS = ['ปาปกติ', 'กระโดดแล้วปา'];
 const TYPE_SHORT = { entry: 'Entry', execute: 'Execute', 'post-plant': 'Post-plant', retake: 'Retake', info: 'Info', hold: 'Hold', smoke: 'Smoke', other: '' };
 
@@ -961,32 +1032,59 @@ function updateTitle() {
   $('#btnAutoTitle').hidden = !state.editing.titleManual;
 }
 
+function shotCell(kind, throwText) {
+  const ed = state.editing;
+  const s = ed.shots[kind];
+  const label = SHOT_LABEL[kind];
+  const base = kind.replace('2', '');
+  const badge = kind === 'aim' ? throwText : '';
+  const box = el('div', {
+    class: 'shot' + (s ? ' has' : '') + (ed.activeShot === kind ? ' active' : ''), 'data-kind': kind,
+    onclick: () => { ed.activeShot = kind; renderShots(); },
+    ondragover: (e) => { e.preventDefault(); box.classList.add('drop'); },
+    ondragleave: () => box.classList.remove('drop'),
+    ondrop: (e) => { e.preventDefault(); box.classList.remove('drop'); const f = e.dataTransfer?.files?.[0]; if (f) setShotFile(kind, f); },
+  });
+  const remove = (e) => {
+    e.stopPropagation();
+    ed.shots[kind] = null;
+    if (kind.endsWith('2')) ed.showSecond[base] = false;
+    renderShots();
+  };
+  box.append(...(s
+    ? [
+      el('img', {
+        src: s.url, alt: label, class: 'zoomable-img', title: 'แตะเพื่อขยาย',
+        onclick: (e) => { e.stopPropagation(); ed.activeShot = kind; zoom(s.url, label, badge); },
+      }),
+      el('span', { class: 'cap', text: label }),
+      badge ? el('span', { class: 'throw-badge', text: badge }) : null,
+      el('span', { class: 'shot-tools' },
+        el('button', { type: 'button', title: 'ขยายดู', 'aria-label': 'ขยายดู', onclick: (e) => { e.stopPropagation(); zoom(s.url, label, badge); } }, '🔍'),
+        el('button', { type: 'button', title: 'ไฮไลต์ / ครอป', onclick: (e) => { e.stopPropagation(); annotateShot(kind); } }, '✎'),
+        el('button', { type: 'button', title: 'เปลี่ยนรูป', onclick: (e) => { e.stopPropagation(); chooseShot(kind); } }, 'เปลี่ยน'),
+        el('button', { type: 'button', title: 'ลบรูป', onclick: remove }, '✕')),
+      !kind.endsWith('2') && !ed.shots[kind + '2'] && !ed.showSecond[kind]
+        ? el('button', { type: 'button', class: 'add-slot', onclick: (e) => { e.stopPropagation(); ed.showSecond[kind] = true; ed.activeShot = kind + '2'; renderShots(); } }, '+ ช่องล่าง')
+        : null,
+    ].filter(Boolean)
+    : [
+      el('button', { type: 'button', class: 'shot-empty', onclick: (e) => { e.stopPropagation(); chooseShot(kind); } },
+        el('b', { text: '+ รูป' + label }), el('small', { text: 'แตะเลือก · Ctrl+V · ลากไฟล์มาวาง' })),
+      kind.endsWith('2') ? el('span', { class: 'shot-tools' }, el('button', { type: 'button', title: 'เอาช่องนี้ออก', onclick: remove }, '✕')) : null,
+    ].filter(Boolean)));
+  return box;
+}
+
 function renderShots() {
   const ed = state.editing;
   const throwText = readThrow();
-  for (const box of document.querySelectorAll('#editor .shot')) {
-    const kind = box.dataset.kind;
-    const s = ed.shots[kind];
-    const label = SHOT_LABEL[kind];
-    box.classList.toggle('active', ed.activeShot === kind);
-    box.classList.toggle('has', !!s);
-    box.replaceChildren(...(s
-      ? [
-        el('img', {
-          src: s.url, alt: label, class: 'zoomable-img', title: 'แตะเพื่อขยาย',
-          onclick: (e) => { e.stopPropagation(); ed.activeShot = kind; zoom(s.url, label, kind === 'aim' ? throwText : ''); },
-        }),
-        el('span', { class: 'cap', text: label }),
-        kind === 'aim' && throwText ? el('span', { class: 'throw-badge', text: throwText }) : null,
-        el('span', { class: 'shot-tools' },
-          el('button', { type: 'button', title: 'ขยายดู', 'aria-label': 'ขยายดู', onclick: (e) => { e.stopPropagation(); zoom(s.url, label, kind === 'aim' ? throwText : ''); } }, '🔍'),
-          el('button', { type: 'button', title: 'ไฮไลต์', onclick: (e) => { e.stopPropagation(); annotateShot(kind); } }, '✎ ไฮไลต์'),
-          el('button', { type: 'button', title: 'เปลี่ยนรูป', onclick: (e) => { e.stopPropagation(); chooseShot(kind); } }, 'เปลี่ยน'),
-          el('button', { type: 'button', title: 'ลบรูป', onclick: (e) => { e.stopPropagation(); ed.shots[kind] = null; renderShots(); } }, '✕')),
-      ].filter(Boolean)
-      : [el('button', { type: 'button', class: 'shot-empty', onclick: () => chooseShot(kind) },
-        el('b', { text: '+ รูป' + label }), el('small', { text: 'แตะเพื่อเลือก · Ctrl+V · ลากไฟล์มาวาง' }))]));
-  }
+  const cols = ['stand', 'aim'].map((key) => ({
+    key,
+    top: shotCell(key, throwText),
+    bottom: ed.shots[key + '2'] || ed.showSecond[key] ? shotCell(key + '2', throwText) : null,
+  }));
+  $('#shotBoard').replaceChildren(makeBoard(cols, ed.layout, (lay) => { ed.layout = lay; }));
 }
 
 function chooseShot(kind) {
@@ -1001,6 +1099,7 @@ async function setShotFile(kind, file) {
     const blob = await shrinkImage(file);
     state.editing.shots[kind] = { ...state.editing.shots[kind], blob, orig: blob, shapes: [], url: URL.createObjectURL(blob), dirty: true };
     state.editing.activeShot = kind === 'stand' && !state.editing.shots.aim ? 'aim' : kind;
+    if (kind.endsWith('2')) state.editing.showSecond[kind.replace('2', '')] = true;
     renderShots();
     annotateShot(kind, 'crop'); // crop right away so the picture is already close-up (Cancel keeps it as is)
   } catch (e) { toast(e.message); }
@@ -1037,11 +1136,14 @@ function openEditor(src) {
     d.agent = agentOf(only)?.name || only;
   }
   const media = (d.media || []).map(parseMedia).filter(Boolean);
-  const { stand, aim, rest } = splitMedia(media);
+  const split = splitMedia(media);
+  const rest = split.rest;
   const fromMedia = (m) => (m ? { src: m.src, url: mediaSrc(m.src) } : null);
   state.editing = {
     draft: d, exists,
-    shots: d._shots || { stand: fromMedia(stand), aim: fromMedia(aim) },
+    shots: d._shots || Object.fromEntries(SHOT_KINDS.map((k) => [k, fromMedia(split[k])])),
+    showSecond: {},
+    layout: { ...d.layout },
     activeShot: null,
     titleManual: d._titleManual ?? (!!d.title && d.title !== autoTitle(d)),
   };
@@ -1086,6 +1188,10 @@ function readForm() {
   d.steps = f.steps.value.trim();
   d.throw = readThrow();
   d.tags = f.tags.value.split(',').map((x) => x.trim()).filter(Boolean);
+  const lay = { ...LAYOUT_DEFAULT, ...state.editing.layout };
+  const used = { col: true, stand: !!state.editing.shots.stand2, aim: !!state.editing.shots.aim2 };
+  const changed = Object.keys(LAYOUT_DEFAULT).some((k) => used[k] && Math.abs(lay[k] - 0.5) > 0.01);
+  d.layout = changed ? Object.fromEntries(Object.keys(LAYOUT_DEFAULT).filter((k) => used[k]).map((k) => [k, clampR(lay[k])])) : undefined;
   return d;
 }
 const readRestMedia = () => $('#editForm').elements.media.value.split('\n').map((x) => x.trim()).filter(Boolean).map((x) => {
@@ -1097,7 +1203,7 @@ const readRestMedia = () => $('#editForm').elements.media.value.split('\n').map(
 /** Save images to IndexedDB under their future repo path and build the media list. */
 async function buildMedia(d) {
   const out = [];
-  for (const kind of ['stand', 'aim']) {
+  for (const kind of SHOT_KINDS) {
     const sh = state.editing.shots[kind];
     if (!sh) continue;
     let src = sh.src;
@@ -1759,24 +1865,14 @@ function bindUi() {
     if (file && state.editing?.activeShot) setShotFile(state.editing.activeShot, file);
     e.target.value = '';
   });
-  for (const box of document.querySelectorAll('#editor .shot')) {
-    box.addEventListener('click', () => { state.editing.activeShot = box.dataset.kind; renderShots(); });
-    box.addEventListener('dragover', (e) => { e.preventDefault(); box.classList.add('drop'); });
-    box.addEventListener('dragleave', () => box.classList.remove('drop'));
-    box.addEventListener('drop', (e) => {
-      e.preventDefault();
-      box.classList.remove('drop');
-      const file = e.dataTransfer?.files?.[0];
-      if (file) setShotFile(box.dataset.kind, file);
-    });
-  }
   document.addEventListener('paste', (e) => {
     if (!$('#editor').open || $('#annot').open) return;
     const item = [...(e.clipboardData?.items || [])].find((i) => i.type.startsWith('image/'));
     if (!item) return;
     e.preventDefault();
     const ed = state.editing;
-    const kind = ed.activeShot || (!ed.shots.stand ? 'stand' : !ed.shots.aim ? 'aim' : 'stand');
+    const kind = (ed.activeShot && (!ed.activeShot.endsWith('2') || ed.showSecond[ed.activeShot[0] === 's' ? 'stand' : 'aim'] || ed.shots[ed.activeShot]))
+      ? ed.activeShot : (!ed.shots.stand ? 'stand' : !ed.shots.aim ? 'aim' : 'stand');
     setShotFile(kind, item.getAsFile());
   });
   bindAnnot();
