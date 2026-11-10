@@ -396,7 +396,6 @@ dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
   .list-col .menu { right: 0; }
 
   .maps { padding: 0 0 8px; }
-  .map-chip { width: 124px; height: 40px; }
   .map-chip .nm { font-size: 13px; left: 8px; bottom: 2px; }
   .seg button { padding: 4px 0; }
   select, input:not([type=checkbox]):not([type=file]) { min-height: 34px; padding: 4px 8px; }
@@ -605,8 +604,11 @@ dialog.annot::backdrop { background: #000; }
 .smoke-row .card-n { background: color-mix(in srgb, var(--ag, #888) 40%, transparent); color: #fff; }
 #smokePlace { align-self: flex-start; }
 
-/* wider map thumbnails */
-.map-chip { width: 168px; }
+/* map thumbnails: shorter, taller (desktop); smaller on landscape phones */
+.map-chip { width: 128px; height: 64px; }
+@media (orientation: landscape) and (max-height: 600px) {
+  .map-chip { width: 108px; height: 48px; }
+}
 /* plan card icons: agent face + ability in the corner */
 .plan-ic { position: relative; width: 34px; height: 34px; padding: 0; overflow: visible; }
 .plan-ic .face { width: 100%; height: 100%; object-fit: cover; border-radius: 5px; }
