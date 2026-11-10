@@ -115,5 +115,37 @@
         "caption": "จุดเล็ง"
       }
     ]
+  },
+  {
+    "id": "mwb5ge45truz",
+    "title": "Killjoy A · Entry",
+    "map": "Summit",
+    "agent": "Killjoy",
+    "side": "attack",
+    "site": "A",
+    "type": "entry",
+    "from": {
+      "x": 0.763,
+      "y": 0.605
+    },
+    "to": {
+      "x": 0.926,
+      "y": 0.453
+    },
+    "throw": "ปาปกติ",
+    "media": [
+      {
+        "src": "media/summit/killjoy-a-x-mwb5ge45truz-stand-vmwb5ge45.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/summit/killjoy-a-x-mwb5ge45truz-aim-vmwb5ge4j.webp",
+        "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/summit/killjoy-a-x-mwb5ge45truz-aim2-vmwb5ge4o.webp",
+        "caption": "จุดเล็ง 2"
+      }
+    ]
   }
 ]
