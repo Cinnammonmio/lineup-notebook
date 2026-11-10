@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.3.0';
+const APP_VERSION = '1.3.1';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -963,10 +963,14 @@ function renderShots() {
     box.classList.toggle('has', !!s);
     box.replaceChildren(...(s
       ? [
-        el('img', { src: s.url, alt: label }),
+        el('img', {
+          src: s.url, alt: label, class: 'zoomable-img', title: 'แตะเพื่อขยาย',
+          onclick: (e) => { e.stopPropagation(); ed.activeShot = kind; zoom(s.url, label, kind === 'aim' ? throwText : ''); },
+        }),
         el('span', { class: 'cap', text: label }),
         kind === 'aim' && throwText ? el('span', { class: 'throw-badge', text: throwText }) : null,
         el('span', { class: 'shot-tools' },
+          el('button', { type: 'button', title: 'ขยายดู', 'aria-label': 'ขยายดู', onclick: (e) => { e.stopPropagation(); zoom(s.url, label, kind === 'aim' ? throwText : ''); } }, '🔍'),
           el('button', { type: 'button', title: 'ไฮไลต์', onclick: (e) => { e.stopPropagation(); annotateShot(kind); } }, '✎ ไฮไลต์'),
           el('button', { type: 'button', title: 'เปลี่ยนรูป', onclick: (e) => { e.stopPropagation(); chooseShot(kind); } }, 'เปลี่ยน'),
           el('button', { type: 'button', title: 'ลบรูป', onclick: (e) => { e.stopPropagation(); ed.shots[kind] = null; renderShots(); } }, '✕')),
