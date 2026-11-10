@@ -427,8 +427,6 @@ dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
   dialog.sheet.detail .sheet-body { padding: 0 0 16px; }
   .pair { position: relative; height: var(--app-h); aspect-ratio: auto; border-radius: 0; padding: 0; margin: 0; }
   .pair .vdiv, .pair .hdiv { flex-basis: 3px; background: #0b0e13; }
-  .pair-fig { height: 100%; }
-  .pair-fig .zoomable { height: 100%; }
   /* fill each half (crops the left/right edges a little); ⤢ switches to "fit" to see the whole picture */
   .pair-fig img, .pair-empty { aspect-ratio: auto; width: 100%; height: 100%; object-fit: cover; border: 0; border-radius: 0; }
   dialog.detail.fit .pair-fig img { object-fit: contain; }
