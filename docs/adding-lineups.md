@@ -24,6 +24,22 @@
 
 ## 3. ส่งขึ้น GitHub
 
+### แบบอัตโนมัติ (แนะนำ) — ตั้งค่าครั้งเดียวต่อเครื่อง
+
+1. เปิด [สร้าง Fine-grained token](https://github.com/settings/personal-access-tokens/new)
+   - **Repository access** → Only select repositories → `lineup-notebook`
+   - **Permissions** → Repository permissions → **Contents: Read and write**
+   - ตั้งวันหมดอายุตามต้องการ → Generate token → คัดลอก
+2. ในเว็บ: เมนู **⋯ → ตั้งค่า GitHub** → วาง token → **ทดสอบ** → **บันทึก**
+3. จากนี้กด **บันทึก** หรือ **ลบ** lineup แล้วเว็บจะขึ้น GitHub ให้เอง (lineups.json + รูป ใน commit เดียว)
+   - ป้ายด้านบน "⬆ ขึ้น GitHub (N)" = ยังไม่ได้ส่ง (แตะเพื่อส่ง) · "⏳ รอเว็บอัปเดต" = ส่งแล้ว รอ 1–2 นาที
+   - ถ้าเน็ตหลุด ข้อมูลยังอยู่ในเครื่อง แตะป้ายเพื่อส่งใหม่ได้
+
+token เก็บในเบราว์เซอร์เครื่องนั้นเท่านั้น ถ้าเครื่องหายให้ลบ token ที่ github.com/settings/personal-access-tokens
+
+### แบบส่งออกเอง
+
+
 1. ⋯ → **ส่งออก** (หรือแตะป้ายสีเหลือง)
    - ถ้ามีรูปใหม่ จะได้ `lineups-export.zip` → แตกไฟล์ลงโฟลเดอร์ repo ให้ทับของเดิม
      (ข้างในมี `data/lineups.json` และ `media/<แมพ>/...webp`)

@@ -487,3 +487,10 @@ dialog.annot::backdrop { background: #000; }
 .title-row input, .pk-text { color: var(--text); }
 
 .menu-ver { padding: 8px 12px 4px; margin-top: 4px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); font-family: "Chakra Petch", var(--font); letter-spacing: .06em; }
+
+/* ---------- GitHub settings ---------- */
+#ghDialog.sheet { width: min(560px, calc(100% - 32px)); }
+.gh-steps { margin: 0; padding-left: 20px; font-size: 14px; color: var(--text); display: flex; flex-direction: column; gap: 4px; }
+#ghStatus { font-size: 13px; color: var(--text); min-height: 1.2em; }
+#ghForm .check { color: var(--text); white-space: normal; }
+.unsynced:disabled { opacity: .7; cursor: progress; }

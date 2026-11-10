@@ -26,6 +26,8 @@
       <button id="btnMenu" class="btn icon" type="button" aria-label="เมนู" aria-haspopup="true" aria-expanded="false">⋯</button>
     </div>
     <div id="menu" class="menu" hidden>
+      <button type="button" data-act="github">ตั้งค่า GitHub (บันทึกแล้วขึ้นเว็บเอง)</button>
+      <button type="button" data-act="publish">ขึ้น GitHub ตอนนี้</button>
       <button type="button" data-act="export">ส่งออก (lineups.json / zip พร้อมรูป)</button>
       <button type="button" data-act="import">นำเข้าไฟล์ JSON</button>
       <button type="button" data-act="refresh">โหลดข้อมูลแมพ/เอเจนต์ใหม่</button>
@@ -68,6 +70,40 @@
 
   <dialog id="detail" class="sheet detail" aria-label="รายละเอียด lineup"></dialog>
   <dialog id="zoom" class="zoom" aria-label="รูปขยาย (แตะเพื่อปิด)"></dialog>
+
+  <dialog id="ghDialog" class="sheet" aria-labelledby="ghTitle">
+    <form id="ghForm" class="sheet-inner" novalidate>
+      <header class="sheet-head">
+        <h2 id="ghTitle" class="grow">ตั้งค่า GitHub</h2>
+        <button type="button" class="btn icon" data-close aria-label="ปิด">✕</button>
+      </header>
+      <div class="sheet-body form">
+        <p class="muted">ใส่ token ครั้งเดียวต่อเครื่อง แล้วกดบันทึก lineup จะขึ้น GitHub ให้เอง (มือถือเห็นใน 1–2 นาที)</p>
+        <ol class="gh-steps">
+          <li>เปิด <a href="https://github.com/settings/personal-access-tokens/new" target="_blank" rel="noopener">สร้าง Fine-grained token</a></li>
+          <li><b>Repository access</b> → Only select repositories → เลือก repo นี้</li>
+          <li><b>Permissions</b> → Repository permissions → <b>Contents: Read and write</b></li>
+          <li>กด Generate token แล้วคัดลอกมาวางด้านล่าง</li>
+        </ol>
+        <label>Token
+          <input name="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+        </label>
+        <div class="grid2">
+          <label>Repo (เจ้าของ/ชื่อ)<input name="repo" autocomplete="off" spellcheck="false"></label>
+          <label>Branch<input name="branch" autocomplete="off" spellcheck="false"></label>
+        </div>
+        <label class="check"><input type="checkbox" name="auto"> กดบันทึก / ลบ แล้วขึ้น GitHub อัตโนมัติ</label>
+        <p id="ghStatus" class="hint"></p>
+        <p class="hint">token เก็บในเบราว์เซอร์เครื่องนี้เท่านั้น ไม่ได้ส่งเข้า repo ใช้ได้แค่ repo ที่เลือก · ถ้าเครื่องหายหรือให้คนอื่นยืม ให้ลบ token ที่ github.com/settings/personal-access-tokens</p>
+      </div>
+      <footer class="sheet-foot">
+        <button type="button" class="btn danger" id="ghForget">ลบ token</button>
+        <span class="grow"></span>
+        <button type="button" class="btn" id="ghTest">ทดสอบ</button>
+        <button type="submit" class="btn primary">บันทึก</button>
+      </footer>
+    </form>
+  </dialog>
 
   <dialog id="annot" class="annot" aria-label="ไฮไลต์รูป">
     <div class="annot-bar">
