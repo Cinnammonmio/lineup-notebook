@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.5.1';
+const APP_VERSION = '1.6.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -1220,7 +1220,12 @@ async function buildMedia(d) {
 
 /* ---------- highlight tool: circle / arrow / pen / crop ---------- */
 
-const CIRCLE_SIZES = { s: 0.035, m: 0.06, l: 0.1 };   // radius as a share of the image width (tap to place)
+/** Sizes per tool, as a share of the picture width: circle radius, arrow length, crop box width. */
+const TOOL_SIZES = {
+  circle: { s: 0.035, m: 0.06, l: 0.1 },
+  arrow: { s: 0.08, m: 0.14, l: 0.22 },
+  crop: { s: 0.3, m: 0.45, l: 0.65 },
+};
 const LINE_WIDTHS = { thin: 0.6, mid: 1, thick: 1.8 };
 const annot = {
   img: null, baseBlob: null, shapes: [], history: [], crop: null, cur: null, before: null, resolve: null,
@@ -1315,13 +1320,16 @@ function syncAnnotBar() {
   for (const b of bar.querySelectorAll('[data-aspect]')) b.classList.toggle('on', b.dataset.aspect === annot.aspect);
   bar.querySelector('.annot-aspect').hidden = annot.tool !== 'crop';
   bar.querySelector('[data-annot=dash]').classList.toggle('on', annot.dash);
-  bar.querySelector('.annot-sizes').hidden = annot.tool !== 'circle';
   const cropping = annot.tool === 'crop';
   for (const g of bar.querySelectorAll('.annot-style')) g.hidden = cropping;
+  bar.querySelector('.annot-sizes').hidden = annot.tool === 'pen';
   $('#annotCanvas').style.cursor = 'crosshair';
-  $('#annot .annot-hint').textContent = cropping
-    ? 'ลากกรอบส่วนที่ต้องการ แล้วกด ✓ ใช้ครอป · ไม่ครอปกด ยกเลิก'
-    : annot.tool === 'circle' ? 'แตะ = วงกลมขนาดที่เลือก · ลาก = กำหนดขนาดเอง' : '';
+  $('#annot .annot-hint').textContent = {
+    crop: 'แตะจุดที่จะเล็ง / ยืน = กรอบครอปรอบจุดนั้น · S/M/L เปลี่ยนขนาด · ลากออกจากจุด = ปรับเอง → ✓ ใช้ครอป',
+    circle: 'แตะจุดที่จะเล็ง / ยืน = วงกลมรอบจุดนั้น · S/M/L เปลี่ยนขนาด · ลากออกจากจุด = ปรับเอง',
+    arrow: 'แตะจุดที่จะเล็ง / ยืน = ลูกศรชี้ไปที่จุดนั้น · S/M/L เปลี่ยนความยาว · ลาก = เลือกทิศ',
+    pen: 'ลากเพื่อวาดอิสระ',
+  }[annot.tool] || '';
 }
 
 function pushHistory() {
@@ -1329,18 +1337,36 @@ function pushHistory() {
   if (annot.history.length > 50) annot.history.shift();
 }
 
-/** Crop box from a drag, locked to the chosen aspect ratio (in picture pixels), kept inside the picture. */
-function cropBox(x1, y1, x2, y2) {
-  const ratio = ASPECTS[annot.aspect];
-  let w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
-  if (ratio) {
-    const k = imgW(annot.img) / imgH(annot.img) / ratio; // normalised height per unit of normalised width
-    if (h < w * k) h = w * k; else w = h / k;
-    const maxW = x2 >= x1 ? 1 - x1 : x1, maxH = y2 >= y1 ? 1 - y1 : y1;
-    const f = Math.min(1, maxW / w, maxH / h);
-    w *= f; h *= f;
+/* Everything is placed from a centre point: the spot to aim at / stand on. */
+const picRatio = () => imgW(annot.img) / imgH(annot.img); // normalised y per normalised x for equal pixels
+
+function circleAt(cx, cy, r) {
+  const ry = r * picRatio();
+  return { cx, cy, x1: cx - r, x2: cx + r, y1: cy - ry, y2: cy + ry };
+}
+/** Arrow whose head is at (cx, cy); the tail sits `len` away at angle `a` (default: from the lower right). */
+function arrowAt(cx, cy, len, a) {
+  let ang = a ?? Math.PI * 0.75;
+  const tail = (t) => [cx - Math.cos(t) * len, cy + Math.sin(t) * len * picRatio()];
+  let [tx, ty] = tail(ang);
+  if (a == null && (tx < 0 || ty > 1)) { // keep the default tail on the picture
+    for (const t of [Math.PI * 0.25, -Math.PI * 0.25, -Math.PI * 0.75]) {
+      const [x, y] = tail(t);
+      if (x >= 0 && x <= 1 && y >= 0 && y <= 1) { ang = t; [tx, ty] = [x, y]; break; }
+    }
   }
-  return { x: x2 >= x1 ? x1 : x1 - w, y: y2 >= y1 ? y1 : y1 - h, w, h };
+  return { cx, cy, ang, len, x1: tx, y1: ty, x2: cx, y2: cy };
+}
+/** Crop box of width w centred on (cx, cy), locked to the chosen aspect (or height hFree when free), kept inside the picture. */
+function cropAt(cx, cy, w, hFree) {
+  const ratio = ASPECTS[annot.aspect];
+  w = Math.max(0.05, w);
+  let h = ratio ? w * picRatio() / ratio : Math.max(0.05, hFree ?? w);
+  const f = Math.min(1, 1 / w, 1 / h);
+  w *= f; h *= f;
+  const x = Math.min(1 - w, Math.max(0, cx - w / 2));
+  const y = Math.min(1 - h, Math.max(0, cy - h / 2));
+  return { cx, cy, x, y, w, h };
 }
 
 function applyCrop() {
@@ -1400,33 +1426,42 @@ function bindAnnot() {
   c.addEventListener('pointerdown', (e) => {
     c.setPointerCapture(e.pointerId);
     const [x, y] = pt(e);
-    if (annot.tool === 'crop') { annot.cur = { crop: true, x1: x, y1: y }; annot.crop = { x, y, w: 0, h: 0 }; return; }
+    const size = TOOL_SIZES[annot.tool]?.[annot.size];
+    if (annot.tool === 'crop') { annot.crop = cropAt(x, y, size); annot.cur = { crop: true, cx: x, cy: y }; drawAnnot(); return; }
     annot.before = { img: annot.img, baseBlob: annot.baseBlob, shapes: copyShapes(annot.shapes) };
     const style = { color: annot.color, w: LINE_WIDTHS[annot.width], dash: annot.dash || undefined };
-    annot.cur = annot.tool === 'pen'
-      ? { type: 'pen', ...style, pts: [[x, y]] }
-      : { type: annot.tool, ...style, x1: x, y1: y, x2: x, y2: y };
+    annot.cur = annot.tool === 'pen' ? { type: 'pen', ...style, pts: [[x, y]] }
+      : annot.tool === 'circle' ? { type: 'circle', ...style, ...circleAt(x, y, size) }
+      : { type: 'arrow', ...style, ...arrowAt(x, y, size) };
+    annot.cur.start = [x, y];
     annot.shapes.push(annot.cur);
+    annot.last = annot.tool === 'pen' ? null : annot.cur;
+    drawAnnot();
   });
   c.addEventListener('pointermove', (e) => {
     const cur = annot.cur;
     if (!cur) return;
     const [x, y] = pt(e);
-    if (cur.crop) annot.crop = cropBox(cur.x1, cur.y1, x, y);
-    else if (cur.type === 'pen') cur.pts.push([x, y]);
-    else { cur.x2 = x; cur.y2 = y; }
+    const dx = x - cur.cx, dy = (y - cur.cy) / picRatio(); // in width units
+    const dist = Math.hypot(dx, dy);
+    if (cur.crop) {
+      if (dist > 0.02) { // drag from the centre: the box grows around it
+        const ratio = ASPECTS[annot.aspect];
+        annot.crop = ratio
+          ? cropAt(cur.cx, cur.cy, Math.max(Math.abs(dx) * 2, Math.abs(dy) * 2 * ratio, 0.05))
+          : cropAt(cur.cx, cur.cy, Math.abs(x - cur.cx) * 2, Math.abs(y - cur.cy) * 2);
+      }
+    } else if (cur.type === 'pen') cur.pts.push([x, y]);
+    else if (cur.type === 'circle') { if (dist > 0.01) Object.assign(cur, circleAt(cur.cx, cur.cy, dist)); }
+    else if (cur.type === 'arrow') { if (dist > 0.02) Object.assign(cur, arrowAt(cur.cx, cur.cy, dist, Math.atan2(dy, -dx))); } // tail follows the finger
     drawAnnot();
   });
   const end = () => {
     const sh = annot.cur;
     annot.cur = null;
     if (!sh || sh.crop) { drawAnnot(); return; }
-    const tiny = sh.type !== 'pen' && Math.hypot(sh.x2 - sh.x1, sh.y2 - sh.y1) < 0.01;
-    if (tiny && sh.type === 'circle') { // tap: place a circle of the chosen size
-      const r = CIRCLE_SIZES[annot.size], ry = r * c.width / c.height;
-      Object.assign(sh, { x1: sh.x1 - r, x2: sh.x1 + r, y1: sh.y1 - ry, y2: sh.y1 + ry });
-    } else if (tiny) annot.shapes.pop();
-    if (annot.shapes.includes(sh)) { annot.history.push(annot.before); }
+    delete sh.start;
+    annot.history.push(annot.before);
     annot.before = null;
     drawAnnot();
   };
@@ -1437,17 +1472,28 @@ function bindAnnot() {
     const b = e.target.closest('button');
     if (!b) return;
     const d = b.dataset;
-    if (d.tool) { annot.tool = d.tool; if (d.tool !== 'crop') annot.crop = null; }
+    if (d.tool) { annot.tool = d.tool; annot.last = null; if (d.tool !== 'crop') annot.crop = null; }
     if (d.color) annot.color = d.color;
-    if (d.size) annot.size = d.size;
+    if (d.size) {
+      annot.size = d.size;
+      const sz = TOOL_SIZES[annot.tool]?.[d.size];
+      if (annot.tool === 'crop' && annot.crop) annot.crop = cropAt(annot.crop.cx, annot.crop.cy, sz);
+      else if (annot.last && annot.last.type === annot.tool && annot.shapes.includes(annot.last)) {
+        pushHistory();
+        const i = annot.shapes.length - 1 - [...annot.shapes].reverse().indexOf(annot.last);
+        const L = annot.shapes[i];
+        Object.assign(L, L.type === 'circle' ? circleAt(L.cx, L.cy, sz) : arrowAt(L.cx, L.cy, sz, L.ang));
+        annot.last = L;
+      }
+    }
     if (d.width) annot.width = d.width;
-    if (d.aspect) { annot.aspect = d.aspect; annot.crop = null; }
+    if (d.aspect) { annot.aspect = d.aspect; if (annot.crop) annot.crop = cropAt(annot.crop.cx, annot.crop.cy, annot.crop.w); }
     if (d.annot === 'dash') annot.dash = !annot.dash;
     if (d.annot === 'undo') {
       if (annot.crop) annot.crop = null;
       else {
         const prev = annot.history.pop();
-        if (prev) { Object.assign(annot, prev); sizeAnnotCanvas(); }
+        if (prev) { Object.assign(annot, prev); annot.last = null; sizeAnnotCanvas(); }
       }
     }
     if (d.annot === 'clear' && annot.shapes.length) { pushHistory(); annot.shapes = []; }
