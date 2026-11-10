@@ -26,10 +26,11 @@
       <button id="btnMenu" class="btn icon" type="button" aria-label="เมนู" aria-haspopup="true" aria-expanded="false">⋯</button>
     </div>
     <div id="menu" class="menu" hidden>
-      <button type="button" data-act="export">ส่งออก lineups.json</button>
+      <button type="button" data-act="export">ส่งออก (lineups.json / zip พร้อมรูป)</button>
       <button type="button" data-act="import">นำเข้าไฟล์ JSON</button>
       <button type="button" data-act="refresh">โหลดข้อมูลแมพ/เอเจนต์ใหม่</button>
       <button type="button" data-act="reset" class="danger">ล้างการแก้ไขในเครื่องนี้</button>
+      <div class="menu-ver">ARC <span data-version></span></div>
     </div>
   </header>
 
@@ -62,6 +63,7 @@
   <footer class="foot">
     ARC เป็นโปรเจกต์ส่วนตัว ไม่ได้รับการรับรองจาก Riot Games และไม่ได้สะท้อนความเห็นของ Riot Games
     · ภาพแมพ/เอเจนต์จาก <a href="https://valorant-api.com" target="_blank" rel="noopener">valorant-api.com</a>
+    · ARC <span data-version></span>
   </footer>
 
   <dialog id="detail" class="sheet detail" aria-label="รายละเอียด lineup"></dialog>

@@ -4,9 +4,9 @@
  * - หน้าเว็บ + data/lineups.json: ลองเน็ตก่อน ถ้าไม่มีเน็ตใช้ของในแคช
  * - css/js/รูป (รวมรูปแมพจาก valorant-api): ใช้ของในแคชทันที แล้วอัปเดตเบื้องหลัง
  * - คลิปวิดีโอ: ไม่แคช โหลดตอนกดดูเท่านั้น (ไฟล์ใหญ่)
- * เปลี่ยน VERSION เมื่ออยากล้างแคชทั้งหมด
+ * VERSION ต้องตรงกับ APP_VERSION ใน assets/app.js — เปลี่ยนทุกครั้งที่ออกเวอร์ชันใหม่ (ล้างแคชเก่าให้เอง)
  */
-const VERSION = 'v4';
+const VERSION = '1.2.0';
 const SHELL = 'lp-shell-' + VERSION;
 const RUNTIME = 'lp-runtime-' + VERSION;
 const SHELL_FILES = [

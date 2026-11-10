@@ -7,6 +7,9 @@
  *   valorant-api.com       → map minimaps + agent/ability icons (cached locally)
  */
 
+/** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
+const APP_VERSION = '1.2.0';
+
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
 const API_TTL = 3 * 24 * 3600 * 1000;
@@ -1385,6 +1388,7 @@ function placeMapChips() {
 }
 
 async function init() {
+  for (const n of document.querySelectorAll('[data-version]')) n.textContent = 'v' + APP_VERSION;
   bindUi();
   placeMapChips();
   LANDSCAPE_PHONE.addEventListener('change', placeMapChips);
