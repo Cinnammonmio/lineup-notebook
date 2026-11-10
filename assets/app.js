@@ -1,6 +1,6 @@
 'use strict';
 
-/* สมุด Lineup — static, no build step.
+/* ARC (Valorant Lineups) — static, no build step.
  * Data sources:
  *   data/lineups.json      → lineups committed to the repo (shared by every device)
  *   localStorage lp.local  → edits made in this browser, not yet exported
@@ -15,7 +15,8 @@ const LS = {
   local: 'lp.local.v1',
   practiced: 'lp.practiced.v1',
   lastMap: 'lp.lastMap',
-  maps: 'lp.api.maps.v1',
+  maps: 'lp.api.maps.v3',
+  agent: 'lp.agent',
   agents: 'lp.api.agents.v1',
 };
 
@@ -26,6 +27,7 @@ const TYPES = [
   ['retake', 'รีเทค'],
   ['info', 'หาข้อมูล'],
   ['hold', 'ตั้งรับ / หน่วงเวลา'],
+  ['smoke', 'จุดวาง smoke'],
   ['other', 'อื่น ๆ'],
 ];
 const TYPE_LABEL = Object.fromEntries(TYPES);
@@ -70,6 +72,7 @@ function setProps(n, props) {
     else n.setAttribute(k, v === true ? '' : v);
   }
 }
+const isMobile = () => (matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0) && innerWidth < 900;
 const safeHref = (u) => (/^\s*(javascript|vbscript|data:text)/i.test(u) ? '#' : u);
 
 function stable(v) {
@@ -109,7 +112,7 @@ const state = {
   local: store.get(LS.local, {}),
   practiced: store.get(LS.practiced, {}),
   map: null,
-  f: { agents: new Set(), side: 'all', site: 'all', type: 'all', q: '', todo: false },
+  f: { agents: new Set([store.get(LS.agent, [])].flat().filter((x) => typeof x === 'string')), side: 'all', site: 'all', type: 'all', q: '', todo: false },
   selected: null,
   pick: null,
   editing: null,
@@ -137,8 +140,39 @@ function pickMaps(arr) {
   return arr
     .filter((m) => m.tacticalDescription && m.displayIcon && m.displayName)
     .filter((m) => !seen.has(norm(m.displayName)) && seen.add(norm(m.displayName)))
-    .map((m) => ({ name: m.displayName, icon: m.displayIcon, banner: m.listViewIcon || m.splash || null }))
+    .map((m) => ({ name: m.displayName, icon: m.displayIcon, banner: m.listViewIcon || m.splash || null, sites: mapSites(m) }))
     .sort((a, b) => a.name.localeCompare(b.name));
+}
+
+/** Labels on the minimap — site letters A/B/C and ATTACKER/DEFENDER spawns — from valorant-api callouts (world coords → 0–1). */
+function mapSites(m) {
+  const k = ['xMultiplier', 'yMultiplier', 'xScalarToAdd', 'yScalarToAdd'];
+  if (!k.every((x) => typeof m[x] === 'number')) return [];
+  const acc = {};
+  for (const c of m.callouts || []) {
+    if (!c.location) continue;
+    let key = null;
+    if (c.regionName === 'Site' && /^[ABC]$/.test(c.superRegionName)) key = c.superRegionName;
+    else if (/attack/i.test(c.superRegionName) && /spawn/i.test(c.regionName)) key = 'ATTACKER';
+    else if (/defen/i.test(c.superRegionName) && /spawn/i.test(c.regionName)) key = 'DEFENDER';
+    if (!key) continue;
+    const x = c.location.y * m.xMultiplier + m.xScalarToAdd;
+    const y = c.location.x * m.yMultiplier + m.yScalarToAdd;
+    if (!(x >= 0 && x <= 1 && y >= 0 && y <= 1)) continue;
+    (acc[key] ||= []).push({ x, y });
+  }
+  return Object.entries(acc).sort().map(([name, pts]) => ({
+    name,
+    x: round3(pts.reduce((t, p) => t + p.x, 0) / pts.length),
+    y: round3(pts.reduce((t, p) => t + p.y, 0) / pts.length),
+  }));
+}
+
+function siteLabels(m, box) {
+  for (const st of m?.sites || []) {
+    const kind = st.name === 'ATTACKER' ? ' spawn atk' : st.name === 'DEFENDER' ? ' spawn def' : '';
+    box.append(el('span', { class: 'site-lbl' + kind, style: `left:${st.x * 100}%;top:${st.y * 100}%`, text: st.name }));
+  }
 }
 
 function pickAgents(arr) {
@@ -220,6 +254,8 @@ function matches(l, ignoreMap) {
   return true;
 }
 const visible = () => all().filter((l) => matches(l));
+const byListOrder = (a, b) =>
+  (a.site || '~').localeCompare(b.site || '~') || (a.title || '').localeCompare(b.title || '', 'th');
 
 /* ---------- persistence ---------- */
 
@@ -285,6 +321,7 @@ function render() {
 
 function renderMaps() {
   const box = $('#maps');
+  const keepLeft = box.scrollLeft;
   const items = all();
   box.replaceChildren();
   for (const name of mapNames()) {
@@ -300,7 +337,8 @@ function renderMaps() {
     n ? el('span', { class: 'n', text: String(n) }) : null));
   }
   const on = box.querySelector('.on');
-  if (on) box.scrollTo({ left: on.offsetLeft - 16 - (box.clientWidth - on.offsetWidth) / 2, behavior: 'instant' });
+  box.scrollLeft = keepLeft;
+  scrollIntoRowIfHidden(box, on);
 }
 
 function lineEls(l, cls, svg, pins, interactive) {
@@ -338,6 +376,7 @@ function renderMap() {
   const pins = $('#pins');
   svg.replaceChildren();
   pins.replaceChildren();
+  siteLabels(m, pins);
 
   const sel = state.selected;
   const list = visible().filter((l) => l.from || l.to).sort((a, b) => (a.id === sel) - (b.id === sel));
@@ -347,7 +386,7 @@ function renderMap() {
   }
 
   const p = state.pick;
-  if (p?.draft.from) svg.append(svgEl('circle', { cx: p.draft.from.x * 1000, cy: p.draft.from.y * 1000, r: 13, class: 'tmp' }));
+  if (p?.draft?.from) svg.append(svgEl('circle', { cx: p.draft.from.x * 1000, cy: p.draft.from.y * 1000, r: 13, class: 'tmp' }));
   $('#mapWrap').classList.toggle('picking', !!p);
 }
 
@@ -357,31 +396,62 @@ function hover(id) {
   }
 }
 
+/** Tap = add/remove one agent. Nothing selected = every agent. */
+function toggleAgent(key) {
+  if (state.f.agents.has(key)) state.f.agents.delete(key); else state.f.agents.add(key);
+  saveAgents();
+}
+function setAgents(keys) {
+  state.f.agents = new Set(keys);
+  saveAgents();
+}
+function saveAgents() {
+  store.set(LS.agent, [...state.f.agents]);
+  render();
+}
+
 function renderAgents() {
   const row = $('#agents');
-  const names = [...new Map(all().filter((l) => l.agent).map((l) => {
-    const n = agentOf(l.agent)?.name || l.agent;
-    return [norm(n), n];
-  })).values()].sort((a, b) => a.localeCompare(b));
+  const onMap = all().filter((l) => norm(l.map) === norm(state.map));
+  const count = (name) => onMap.filter((l) => norm(l.agent) === norm(name)).length;
+  // every agent from the API, plus any agent name used in lineups but missing from the API
+  const list = state.agents.map((a) => ({ name: a.name, icon: a.icon }));
+  for (const l of all()) if (l.agent && !list.some((a) => norm(a.name) === norm(l.agent))) list.push({ name: l.agent });
+  list.sort((x, y) => x.name.localeCompare(y.name));
+  const keepLeft = row.scrollLeft;
   row.replaceChildren();
-  row.hidden = !names.length;
-  if (!names.length) return;
-  row.append(el('button', {
-    type: 'button', class: 'ag all' + (state.f.agents.size ? '' : ' on'),
-    onclick: () => { state.f.agents.clear(); render(); },
-  }, 'ทุกเอเจนต์'));
-  for (const n of names) {
-    const a = agentOf(n);
-    const on = state.f.agents.has(norm(n));
+  row.hidden = !list.length;
+  for (const a of list) {
+    const key = norm(a.name);
+    const on = state.f.agents.has(key);
+    const n = count(a.name);
     row.append(el('button', {
-      type: 'button', class: 'ag' + (on ? ' on' : ''), 'aria-pressed': String(on),
-      onclick: () => { if (on) state.f.agents.delete(norm(n)); else state.f.agents.add(norm(n)); render(); },
-    }, a ? el('img', { src: a.icon, alt: '' }) : null, el('span', { text: n })));
+      type: 'button', class: 'ag' + (on ? ' on' : '') + (n ? ' has' : '') + (a.icon ? '' : ' txt'),
+      'aria-pressed': String(on), title: a.name, 'aria-label': a.name + (n ? ` (${n})` : ''),
+      onclick: () => toggleAgent(key),
+    },
+    a.icon ? el('img', { src: a.icon, alt: '', loading: 'lazy' }) : el('span', { text: a.name }),
+    n ? el('span', { class: 'n', text: String(n) }) : null));
+  }
+  row.scrollLeft = keepLeft;
+  if (!row.dataset.scrolled) { row.dataset.scrolled = '1'; scrollIntoRowIfHidden(row, row.querySelector('.on')); }
+}
+
+/** Scroll a horizontal row only when the item is (partly) off screen — never move what the user just tapped. */
+function scrollIntoRowIfHidden(row, item) {
+  if (!item) return;
+  const left = item.offsetLeft - row.offsetLeft;
+  if (left < row.scrollLeft || left + item.offsetWidth > row.scrollLeft + row.clientWidth) {
+    row.scrollLeft = left - (row.clientWidth - item.offsetWidth) / 2;
   }
 }
 
+const SIDE_CYCLE = { all: 'attack', attack: 'defense', defense: 'all' };
 function renderFilters() {
-  for (const b of document.querySelectorAll('#side button')) b.classList.toggle('on', b.dataset.v === state.f.side);
+  const b = $('#side');
+  b.textContent = state.f.side === 'all' ? 'ทั้งหมด' : SIDE_LABEL[state.f.side];
+  b.className = 'side-btn ' + state.f.side;
+  b.setAttribute('aria-label', 'ฝั่ง: ' + b.textContent + ' (แตะเพื่อสลับ)');
 }
 
 function chips(l) {
@@ -399,16 +469,25 @@ function chips(l) {
 function renderList() {
   const ul = $('#list');
   const total = all().filter((l) => norm(l.map) === norm(state.map)).length;
-  const list = visible().sort((a, b) =>
-    (a.site || '~').localeCompare(b.site || '~') || (a.title || '').localeCompare(b.title || '', 'th'));
-  $('#count').textContent = total ? `แสดง ${list.length} จาก ${total} lineup บน ${state.map}` : '';
+  const list = visible().sort(byListOrder);
+  const cnt = $('#count');
+  const picked = [...state.f.agents].map((k) => agentOf(k)?.name || k);
+  const agentName = picked.length ? picked.join(', ') : '';
+  const withLineups = [...new Set(all().filter((l) => norm(l.map) === norm(state.map) && l.agent).map((l) => norm(l.agent)))];
+  cnt.replaceChildren(
+    el('span', { class: 'grow cnt-text', text: (picked.length ? (picked.length > 2 ? `${picked.length} เอเจนต์` : agentName) : 'ทุกเอเจนต์') + ` · ${list.length} lineup` }),
+    ...(picked.length
+      ? [el('button', { type: 'button', class: 'reset-ag', onclick: () => setAgents([]) }, 'ดูทุกเอเจนต์')]
+      : withLineups.length > 1
+        ? [el('button', { type: 'button', class: 'reset-ag', title: 'เลือกทุกเอเจนต์ที่มี lineup บนแมพนี้', onclick: () => setAgents(withLineups) }, 'เลือกตัวที่มี lineup')]
+        : []));
   ul.replaceChildren();
 
   if (!list.length) {
-    ul.append(total
+    ul.append(total && !agentName
       ? el('li', { class: 'empty' }, 'ไม่มี lineup ที่ตรงกับตัวกรอง')
       : el('li', { class: 'empty' },
-        el('span', { text: state.map ? `ยังไม่มี lineup บน ${state.map}` : 'ยังไม่มีข้อมูลแมพ' }),
+        el('span', { text: state.map ? `ยังไม่มี lineup${agentName ? ' ของ ' + agentName : ''} บน ${state.map}` : 'ยังไม่มีข้อมูลแมพ' }),
         state.map ? el('button', { type: 'button', class: 'btn primary', onclick: startAdd }, '+ เพิ่ม lineup แรก') : null));
     return;
   }
@@ -426,8 +505,12 @@ function renderList() {
       el('span', { class: 'ab side-' + (l.side || 'none') }, icon ? el('img', { src: icon, alt: '', loading: 'lazy' }) : '◆'),
       el('span', { class: 'card-body' },
         el('span', { class: 'card-title', text: l.title || '(ไม่มีชื่อ)' }),
-        el('span', { class: 'card-meta', text: [l.agent, l.ability].filter(Boolean).join(' · ') || '—' }),
-        el('span', { class: 'chips' }, chips(l)))),
+        el('span', { class: 'card-meta' },
+          l.side ? el('i', { class: 'side-dot ' + l.side, title: SIDE_LABEL[l.side] }) : null,
+          [l.ability || l.agent, l.site && 'ไซต์ ' + l.site, TYPE_LABEL[l.type]].filter(Boolean).join(' · ') || '—'),
+        l.example || l._local ? el('span', { class: 'chips' },
+          l.example ? el('span', { class: 'chip ex', text: 'ตัวอย่าง' }) : null,
+          l._local ? el('span', { class: 'chip warn', text: 'ยังไม่ export' }) : null) : null)),
       el('button', {
         type: 'button', class: 'tick' + (done ? ' on' : ''), 'aria-pressed': String(done),
         title: done ? 'ซ้อมแล้ว (แตะเพื่อยกเลิก)' : 'ทำเครื่องหมายว่าซ้อมแล้ว',
@@ -475,7 +558,8 @@ function mediaEl({ src, caption }) {
   } else if (/\.(mp4|webm|mov|m4v)(\?|#|$)/i.test(src)) {
     node = el('video', { src: safeHref(src), controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
   } else if (/\.(png|jpe?g|webp|gif|avif|bmp)(\?|#|$)/i.test(src) || /^(media\/|data:image\/)/i.test(src)) {
-    node = el('a', { href: safeHref(src), target: '_blank', rel: 'noopener' }, el('img', { src: safeHref(src), alt: caption || '', loading: 'lazy' }));
+    node = el('button', { type: 'button', class: 'zoomable', onclick: () => zoom(src, caption), 'aria-label': 'ขยายรูป' },
+      el('img', { src: safeHref(src), alt: caption || '', loading: 'lazy' }));
   } else {
     node = el('a', { class: 'link', href: safeHref(src), target: '_blank', rel: 'noopener noreferrer', text: src });
   }
@@ -487,12 +571,49 @@ function miniMap(l) {
   const wrap = el('div', { class: 'mini' }, m ? el('img', { src: m.icon, alt: 'มินิแมพ ' + m.name }) : null);
   const svg = svgEl('svg', { viewBox: '0 0 1000 1000', preserveAspectRatio: 'none', 'aria-hidden': 'true' });
   const pins = el('div', { class: 'pins' });
+  siteLabels(m, pins);
   lineEls(l, 'side-' + (l.side || 'none') + ' sel', svg, pins, false);
   wrap.append(svg, pins);
   return wrap;
 }
 
 const section = (title, body) => el('div', { class: 'sec' }, el('h3', { text: title }), body);
+
+const IMG_RE = /\.(png|jpe?g|webp|gif|avif|bmp)(\?|#|$)|^data:image\//i;
+const STAND_RE = /ยืน|stand/i;
+const AIM_RE = /เล็ง|aim|ปา|throw/i;
+
+/** Split media into the stand/aim image pair and everything else. */
+function splitMedia(list) {
+  const imgs = list.filter((m) => IMG_RE.test(m.src));
+  const tagged = (re, suffix) => imgs.find((m) => re.test(m.caption || '') || new RegExp(`-${suffix}\\.\\w+$`, 'i').test(m.src));
+  let stand = tagged(STAND_RE, 'stand');
+  let aim = tagged(AIM_RE, 'aim');
+  if (!stand && !aim && imgs.length) { [stand, aim] = imgs; }
+  const rest = list.filter((m) => m !== stand && m !== aim);
+  return { stand, aim, rest };
+}
+
+function pairFig(m, label) {
+  return el('figure', { class: 'pair-fig' },
+    m
+      ? el('button', { type: 'button', class: 'zoomable', onclick: () => zoom(m.src, label), 'aria-label': 'ขยายรูป' + label },
+        el('img', { src: safeHref(m.src), alt: label }))
+      : el('div', { class: 'pair-empty', text: 'ยังไม่มีรูป' + label }),
+    el('figcaption', { text: label }));
+}
+
+function zoom(src, caption) {
+  const z = $('#zoom');
+  z.replaceChildren(el('img', { src: safeHref(src), alt: caption || '' }), ...(caption ? [el('span', { class: 'zoom-cap', text: caption })] : []));
+  z.showModal();
+}
+
+function neighbour(id, dir) {
+  const list = visible().sort(byListOrder);
+  const i = list.findIndex((x) => x.id === id);
+  return i < 0 || list.length < 2 ? null : list[(i + dir + list.length) % list.length];
+}
 
 function openDetail(id) {
   const l = all().find((x) => x.id === id);
@@ -504,41 +625,41 @@ function openDetail(id) {
 
   const d = $('#detail');
   const icon = iconFor(l);
-  const done = !!state.practiced[l.id];
   const media = (l.media || []).map(parseMedia).filter(Boolean);
+  const { stand, aim, rest } = splitMedia(media);
+  const showPair = stand || aim || l.from;
+  const prev = neighbour(id, -1);
+  const next = neighbour(id, 1);
+  const navBtn = (t, label, target) => el('button', {
+    type: 'button', class: 'btn icon', 'aria-label': label, title: label, disabled: !target,
+    onclick: () => target && openDetail(target.id),
+  }, t);
 
   d.replaceChildren(el('div', { class: 'sheet-inner' },
     el('header', { class: 'sheet-head' },
       icon ? el('img', { class: 'head-ic', src: icon, alt: '' }) : null,
       el('div', { class: 'grow' },
         el('h2', { text: l.title || '(ไม่มีชื่อ)' }),
-        el('div', { class: 'sub', text: [l.agent, l.ability, l.map].filter(Boolean).join(' · ') })),
+        el('div', { class: 'sub', text: [l.agent, l.ability, l.site && 'ไซต์ ' + l.site, l.throw].filter(Boolean).join(' · ') })),
+      el('button', { type: 'button', class: 'btn sm', onclick: () => { d.close(); openEditor(l); } }, '✎ แก้ไข'),
+      navBtn('‹', 'lineup ก่อนหน้า', prev),
+      navBtn('›', 'lineup ถัดไป', next),
       el('button', { type: 'button', class: 'btn icon', 'aria-label': 'ปิด', onclick: () => d.close() }, '✕')),
     el('div', { class: 'sheet-body' },
-      el('div', { class: 'chips' }, chips(l)),
-      l.from || l.to ? miniMap(l) : null,
-      l.steps ? section('วิธีทำ', el('div', { class: 'steps', text: l.steps })) : null,
-      l.throw ? section('การปา / ยิง', el('p', { text: l.throw })) : null,
-      media.length ? section('รูป / คลิป', el('div', { class: 'gallery' }, media.map(mediaEl))) : null,
-      !l.steps && !l.throw && !media.length
-        ? el('p', { class: 'muted', text: 'ยังไม่มีรายละเอียด กด “แก้ไข” เพื่อเพิ่มวิธีทำหรือรูป' }) : null),
-    el('footer', { class: 'sheet-foot' },
-      el('button', {
-        type: 'button', class: 'btn' + (done ? ' ok' : ''),
-        onclick: () => { togglePracticed(l.id); openDetail(l.id); },
-      }, done ? '✓ ซ้อมแล้ว' : 'ซ้อมแล้ว?'),
-      el('span', { class: 'grow' }),
-      el('button', { type: 'button', class: 'btn', onclick: () => copyLink(l) }, 'คัดลอกลิงก์'),
-      el('button', { type: 'button', class: 'btn primary', onclick: () => { d.close(); openEditor(l); } }, 'แก้ไข'))));
+      showPair ? el('div', { class: 'pair' }, pairFig(stand, 'จุดยืน'), pairFig(aim, 'จุดเล็ง'),
+        el('span', { class: 'scroll-hint', 'aria-hidden': 'true', text: '▲ ปัดขึ้นดูวิธีทำ' })) : null,
+      el('div', { class: 'detail-cols' },
+        el('div', { class: 'detail-text' },
+          el('div', { class: 'chips' }, chips(l)),
+          l.steps ? section('วิธีทำ', el('div', { class: 'steps', text: l.steps })) : null,
+          l.throw ? section('การปา / ยิง', el('p', { text: l.throw })) : null,
+          !l.steps && !l.throw && !media.length
+            ? el('p', { class: 'muted', text: 'ยังไม่มีรายละเอียด กด “แก้ไข” เพื่อเพิ่มวิธีทำหรือรูป' }) : null),
+        l.from || l.to ? miniMap(l) : null),
+      rest.length ? section('คลิป / รูปอื่น ๆ', el('div', { class: 'gallery' }, rest.map(mediaEl))) : null)));
 
   if (!d.open) d.showModal();
   d.querySelector('.sheet-body').scrollTop = 0;
-}
-
-async function copyLink(l) {
-  const url = location.href.split('#')[0] + '#/' + encodeURIComponent(l.map || '') + '/' + encodeURIComponent(l.id);
-  try { await navigator.clipboard.writeText(url); toast('คัดลอกลิงก์แล้ว'); }
-  catch { window.prompt('คัดลอกลิงก์นี้', url); }
 }
 
 /* ---------- editor ---------- */
@@ -557,6 +678,7 @@ function renderPos(d) {
   const set = (sel, v) => { const b = $(sel); b.textContent = v ? 'ตั้งแล้ว ✓' : 'ยังไม่ตั้ง'; b.className = v ? 'ok' : 'no'; };
   set('#posFrom', d.from);
   set('#posTo', d.to);
+  if (!d.from && d.to) $('#posFrom').textContent = 'ไม่มี (วางจากแมพ)';
 }
 
 function openEditor(src) {
@@ -588,6 +710,7 @@ function openEditor(src) {
   f.tags.value = (d.tags || []).join(', ');
   renderPos(d);
   $('#btnDelete').hidden = !exists;
+  $('#mobileWarn').hidden = !isMobile();
 
   const dlg = $('#editor');
   if (!dlg.open) dlg.showModal();
@@ -621,6 +744,7 @@ function readForm() {
 /* ---------- picking positions on the map ---------- */
 
 function startAdd() {
+  if (isMobile()) toast('แก้บนมือถือ: ข้อมูลจะอยู่แค่ในเครื่องนี้ ควรเพิ่มจากคอม');
   if (!state.map) { openEditor({}); return; }
   startPick({ map: state.map }, false);
 }
@@ -650,6 +774,9 @@ function updateBanner() {
   b.replaceChildren(
     el('span', { class: 'step', text: p.step === 'from' ? '1/2' : '2/2' }),
     el('span', { class: 'grow', text: p.step === 'from' ? 'แตะบนแมพตรงจุดที่ยืน' : 'แตะบนแมพตรงจุดที่สกิลไปตก' }),
+    p.step === 'from'
+      ? el('button', { type: 'button', class: 'btn sm', onclick: toOnlyPick, title: 'เช่น smoke ที่วางจากแมพ' }, 'ไม่มีจุดยืน')
+      : null,
     el('button', { type: 'button', class: 'btn sm', onclick: skipPick }, 'ข้าม'),
     el('button', { type: 'button', class: 'btn sm', onclick: cancelPick }, 'ยกเลิก'));
 }
@@ -665,6 +792,14 @@ function skipPick() {
   if (!p) return;
   const d = { ...p.prev, ...(p.draft.from ? { from: p.draft.from } : {}), map: state.map };
   finishPick(d);
+}
+function toOnlyPick() {
+  const p = state.pick;
+  if (!p) return;
+  p.draft.from = null;
+  p.step = 'to';
+  renderMap();
+  updateBanner();
 }
 function cancelPick() {
   const p = state.pick;
@@ -758,15 +893,10 @@ function bindUi() {
 
   // filters
   $('#side').addEventListener('click', (e) => {
-    const v = e.target.closest('button')?.dataset.v;
-    if (v) { state.f.side = v; render(); }
+    e.stopPropagation();
+    state.f.side = SIDE_CYCLE[state.f.side] || 'all';
+    render();
   });
-  fillOptions($('#site'), [['all', 'ทุกไซต์'], ...SITES.map((s) => [s, 'ไซต์ ' + s])], 'all');
-  fillOptions($('#type'), [['all', 'ทุกประเภท'], ...TYPES], 'all');
-  $('#site').addEventListener('change', (e) => { state.f.site = e.target.value; render(); });
-  $('#type').addEventListener('change', (e) => { state.f.type = e.target.value; render(); });
-  $('#q').addEventListener('input', (e) => { state.f.q = e.target.value; render(); });
-  $('#onlyTodo').addEventListener('change', (e) => { state.f.todo = e.target.checked; render(); });
 
   // dialogs: click on backdrop closes
   for (const d of [$('#detail'), $('#editor')]) {
@@ -811,11 +941,29 @@ function bindUi() {
     else if (m && norm(m) !== norm(state.map)) setMap(m);
   });
 
-  window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && state.pick) cancelPick(); });
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state.pick) cancelPick();
+    if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && $('#detail').open && !$('#zoom').open && state.selected) {
+      const n = neighbour(state.selected, e.key === 'ArrowLeft' ? -1 : 1);
+      if (n) openDetail(n.id);
+    }
+  });
+  $('#zoom').addEventListener('click', () => $('#zoom').close());
+}
+
+const LANDSCAPE_PHONE = matchMedia('(orientation: landscape) and (max-height: 600px)');
+/** Landscape phone: header + map chips live in the right column so the map can use the full height. */
+function placeMapChips() {
+  const top = $('header.top');
+  const maps = $('#maps');
+  if (LANDSCAPE_PHONE.matches) $('.list-col').prepend(top, maps);
+  else { document.body.prepend(top); $('main.layout').before(maps); }
 }
 
 async function init() {
   bindUi();
+  placeMapChips();
+  LANDSCAPE_PHONE.addEventListener('change', placeMapChips);
   const [maps, agents, base] = await Promise.all([
     loadApi(MAPS_URL, LS.maps, pickMaps),
     loadApi(AGENTS_URL, LS.agents, pickAgents),

@@ -4,22 +4,22 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0f1218">
-  <meta name="description" content="สมุดจด lineup Valorant ส่วนตัว ใช้ได้ทั้งคอมและมือถือ">
-  <title>สมุด Lineup</title>
+  <meta name="description" content="ARC — สมุดจด lineup Valorant ส่วนตัว ใช้ได้ทั้งคอมและมือถือ">
+  <title>ARC — Valorant Lineups</title>
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="apple-touch-icon" href="assets/icon-180.png">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="Lineup">
+  <meta name="apple-mobile-web-app-title" content="ARC">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@600;700&family=Noto+Sans+Thai:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="assets/style.css">
 </head>
 <body>
   <header class="top">
-    <div class="brand"><img src="assets/icon.svg" alt=""><span>สมุด Lineup</span></div>
+    <div class="brand" aria-label="ARC Valorant Lineups"><img src="assets/icon.svg" alt=""><span class="word">ARC</span><span class="tag">VALORANT<br>LINEUPS</span></div>
     <div class="top-actions">
       <button id="unsynced" class="unsynced" type="button" hidden></button>
       <button id="btnAdd" class="btn primary" type="button">+ เพิ่ม</button>
@@ -40,6 +40,7 @@
       <div id="pickBanner" class="pick-banner" hidden></div>
       <div id="mapWrap" class="map-wrap">
         <img id="mapImg" alt="" draggable="false">
+        <button type="button" id="side" class="side-btn" title="แตะเพื่อสลับ ทั้งหมด → บุก → รับ"></button>
         <svg id="mapSvg" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
         <div id="pins" class="pins"></div>
         <div id="mapNoImg" class="map-noimg" hidden>ไม่มีรูปมินิแมพ (ออฟไลน์หรือชื่อแมพไม่ตรง)</div>
@@ -52,33 +53,19 @@
     </section>
 
     <section class="list-col">
-      <div class="filters">
-        <div id="agents" class="agent-row" aria-label="กรองเอเจนต์"></div>
-        <div class="seg" id="side" role="group" aria-label="ฝั่ง">
-          <button type="button" data-v="all" class="on">ทั้งหมด</button>
-          <button type="button" data-v="attack">บุก</button>
-          <button type="button" data-v="defense">รับ</button>
-        </div>
-        <div class="row">
-          <select id="site" aria-label="ไซต์"></select>
-          <select id="type" aria-label="ประเภท"></select>
-        </div>
-        <div class="row">
-          <input id="q" type="search" placeholder="ค้นหาชื่อ สกิล แท็ก…" aria-label="ค้นหา">
-          <label class="check"><input type="checkbox" id="onlyTodo"> ยังไม่ซ้อม</label>
-        </div>
-      </div>
+      <div id="agents" class="agent-row" role="group" aria-label="เลือกเอเจนต์ (เลือกได้หลายตัว)"></div>
       <div id="count" class="count"></div>
       <ul id="list" class="list"><li class="empty">กำลังโหลด…</li></ul>
     </section>
   </main>
 
   <footer class="foot">
-    สมุด Lineup เป็นโปรเจกต์ส่วนตัว ไม่ได้รับการรับรองจาก Riot Games และไม่ได้สะท้อนความเห็นของ Riot Games
+    ARC เป็นโปรเจกต์ส่วนตัว ไม่ได้รับการรับรองจาก Riot Games และไม่ได้สะท้อนความเห็นของ Riot Games
     · ภาพแมพ/เอเจนต์จาก <a href="https://valorant-api.com" target="_blank" rel="noopener">valorant-api.com</a>
   </footer>
 
-  <dialog id="detail" class="sheet" aria-label="รายละเอียด lineup"></dialog>
+  <dialog id="detail" class="sheet detail" aria-label="รายละเอียด lineup"></dialog>
+  <dialog id="zoom" class="zoom" aria-label="รูปขยาย (แตะเพื่อปิด)"></dialog>
 
   <dialog id="editor" class="sheet" aria-labelledby="editTitle">
     <form id="editForm" novalidate>
@@ -88,12 +75,12 @@
       </header>
       <div class="sheet-body form">
         <label>ชื่อ lineup
-          <input name="title" required placeholder="เช่น Recon A Main จากสปอว์น" autocomplete="off">
+          <input name="title" required placeholder="เช่น Molly A default จาก Tree" autocomplete="off">
         </label>
         <div class="grid2">
           <label>แมพ<select name="map" required></select></label>
-          <label>เอเจนต์<input name="agent" list="agentList" placeholder="เช่น Sova" autocomplete="off"></label>
-          <label>สกิล<input name="ability" list="abilityList" placeholder="เช่น Recon Bolt" autocomplete="off"></label>
+          <label>เอเจนต์<input name="agent" list="agentList" placeholder="เช่น Brimstone" autocomplete="off"></label>
+          <label>สกิล<input name="ability" list="abilityList" placeholder="เช่น Incendiary" autocomplete="off"></label>
           <label>ฝั่ง<select name="side"><option value="attack">บุก</option><option value="defense">รับ</option></select></label>
           <label>ไซต์<select name="site"></select></label>
           <label>ประเภท<select name="type"></select></label>
@@ -104,17 +91,18 @@
           <button type="button" class="btn sm" id="btnRepick">เลือกตำแหน่งบนแมพ</button>
         </div>
         <label>วิธีทำ (ทีละขั้น)
-          <textarea name="steps" rows="4" placeholder="1. ยืนชิดมุมกล่องซ้าย&#10;2. เล็งเป้าไว้ที่ปลายเสา&#10;3. ชาร์จ 2 ขีด ปาไป"></textarea>
+          <textarea name="steps" rows="4" placeholder="1. ยืนชิดมุมกล่องซ้าย&#10;2. เล็งเป้าไว้ที่ปลายเสา&#10;3. ปาปกติ"></textarea>
         </label>
         <label>การปา / ยิง
-          <input name="throw" placeholder="เช่น กระโดดแล้วปา, ชาร์จเต็ม เด้ง 1 ครั้ง" autocomplete="off">
+          <input name="throw" placeholder="เช่น ปาปกติ, กระโดดแล้วปา" autocomplete="off">
         </label>
         <label>รูป / คลิป (บรรทัดละ 1 อัน ใส่คำอธิบายต่อท้ายด้วย | ได้)
-          <textarea name="media" rows="3" placeholder="media/ascent/sova-a-stand.jpg | จุดยืน&#10;media/ascent/sova-a-aim.jpg | จุดเล็ง&#10;https://youtu.be/xxxxxxxxxxx?t=42"></textarea>
+          <textarea name="media" rows="3" placeholder="media/ascent/brim-a-molly-default-stand.webp | จุดยืน&#10;media/ascent/brim-a-molly-default-aim.webp | จุดเล็ง&#10;media/ascent/brim-a-molly-default.mp4 | คลิป"></textarea>
         </label>
         <label>แท็ก (คั่นด้วยจุลภาค ,)
           <input name="tags" placeholder="เช่น ใช้บ่อย, one-way" autocomplete="off">
         </label>
+        <p id="mobileWarn" class="warn-box" hidden>คุณกำลังแก้บนมือถือ — ข้อมูลจะเก็บอยู่แค่ในเครื่องนี้ ถ้าจะให้ทุกเครื่องเห็นต้อง export แล้ว push จากคอม</p>
         <p class="hint">บันทึกแล้วจะเก็บในเบราว์เซอร์เครื่องนี้ก่อน กด “ส่งออก lineups.json” แล้วเอาไฟล์ไปแทน data/lineups.json ใน repo เพื่อให้ทุกเครื่องเห็น</p>
       </div>
       <footer class="sheet-foot">

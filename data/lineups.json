@@ -1,0 +1,36 @@
+[
+  {
+    "id": "demo-brim-a-molly",
+    "title": "Molly A default (ตัวอย่าง)",
+    "map": "Ascent",
+    "agent": "Brimstone",
+    "ability": "Incendiary",
+    "side": "attack",
+    "site": "A",
+    "type": "post-plant",
+    "from": {
+      "x": 0.3,
+      "y": 0.36
+    },
+    "to": {
+      "x": 0.25,
+      "y": 0.22
+    },
+    "steps": "1. ยืนชิดมุมกล่อง\n2. เล็งครอสแฮร์ไว้ที่ปลายเสา\n3. ปาปกติ (ไม่กระโดด)\n\n※ นี่เป็นข้อมูลตัวอย่าง ตำแหน่งบนแมพยังไม่ใช่ของจริง — กด “แก้ไข” → “เลือกตำแหน่งบนแมพ” แล้วแตะใหม่ให้ตรง",
+    "throw": "ปาปกติ",
+    "tags": [
+      "ใช้บ่อย"
+    ],
+    "example": true,
+    "media": [
+      {
+        "src": "media/ascent/demo-brim-a-molly-stand.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/ascent/demo-brim-a-molly-aim.webp",
+        "caption": "จุดเล็ง"
+      }
+    ]
+  }
+]
