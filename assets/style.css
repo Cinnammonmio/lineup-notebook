@@ -352,7 +352,7 @@ dialog.zoom::backdrop { background: #000; }
 .zoom-stage { position: absolute; inset: 0; display: grid; place-items: center; overflow: hidden; touch-action: none; cursor: zoom-in; user-select: none; -webkit-user-select: none; }
 dialog.zoom.zoomed .zoom-stage { cursor: grab; }
 dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
-.zoom-stage img { max-width: 100%; max-height: var(--app-h); object-fit: contain; transform-origin: center center; will-change: transform; -webkit-user-drag: none; pointer-events: auto; }
+.zoom-stage img { max-width: none; max-height: none; flex: none; object-fit: contain; image-rendering: auto; -webkit-user-drag: none; pointer-events: auto; }
 .zoom-bar { position: fixed; z-index: 3; right: max(10px, env(safe-area-inset-right)); top: max(10px, env(safe-area-inset-top)); display: flex; gap: 6px; }
 .zoom-btn { width: 42px; height: 42px; border-radius: 10px; border: 1px solid #ffffff33; background: #000b; color: #fff; font-size: 20px; line-height: 1; cursor: pointer; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px); }
 .zoom-btn:hover { background: #000; }
