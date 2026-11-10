@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.8.1';
+const APP_VERSION = '1.9.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -122,6 +122,7 @@ const state = {
   f: { agents: new Set([store.get(LS.agent, [])].flat().filter((x) => typeof x === 'string')), role: store.get(LS.role, 'all'), side: 'all', site: 'all', type: 'all', q: '', todo: false },
   selected: null,
   plan: null,
+  peek: null,
   hoverPlan: null,
   smokePick: null,
   tab: 'lineups',
@@ -389,6 +390,10 @@ function readHash() {
 function render() {
   renderMaps();
   renderMap();
+  // keep an open preview only while its pin is still on the map
+  if (state.peek) {
+    if (document.querySelector(`#pins .pin[data-id="${CSS.escape(state.peek.anchor)}"]`)) renderPeek(); else closePeek();
+  }
   renderAgents();
   renderFilters();
   renderList();
@@ -435,7 +440,7 @@ function lineEls(l, cls, svg, pins, interactive, num) {
       style: `left:${l.to.x * 100}%;top:${l.to.y * 100}%` + (col ? `;--ag:${col}` : ''),
       title: l.title || '',
       'aria-label': interactive ? (l.title || 'lineup') : null,
-      onclick: interactive ? (e) => { e.stopPropagation(); openDetail(id); } : null,
+      onclick: interactive ? (e) => { e.stopPropagation(); peekAt(id); } : null,
       onmouseenter: interactive ? () => hover(id) : null,
       onmouseleave: interactive ? () => hover(null) : null,
     }, icon ? el('img', { src: icon, alt: '' }) : '◆', num ? el('span', { class: 'pin-n', text: String(num) }) : null));
@@ -473,6 +478,73 @@ function renderMap() {
   const p = state.pick;
   if (p?.draft?.from) svg.append(svgEl('circle', { cx: p.draft.from.x * 1000, cy: p.draft.from.y * 1000, r: 13, class: 'tmp' }));
   $('#mapWrap').classList.toggle('picking', !!p || !!state.smokePick);
+}
+
+/* ---------- tap a pin: quick preview; pins close together become buttons to switch between ---------- */
+
+const PEEK_RADIUS = 30; // px: pins this close to the tapped one are offered too
+
+function peekAt(id) {
+  const pinEls = [...document.querySelectorAll('#pins .pin[data-id]')];
+  const centre = (n) => { const r = n.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+  const me = pinEls.find((n) => n.dataset.id === id);
+  if (!me) { openDetail(id); return; }
+  const [cx, cy] = centre(me);
+  const near = pinEls.map((n) => { const [x, y] = centre(n); return { id: n.dataset.id, d: Math.hypot(x - cx, y - cy) }; })
+    .filter((x) => x.d <= PEEK_RADIUS).sort((a, b) => a.d - b.d).map((x) => x.id);
+  state.peek = { ids: [...new Set(near)], i: 0, anchor: id };
+  renderPeek();
+}
+
+function closePeek() {
+  state.peek = null;
+  $('#peek').hidden = true;
+  $('#peek').replaceChildren();
+  hover(null);
+}
+
+function renderPeek() {
+  const pk = state.peek;
+  const box = $('#peek');
+  if (!pk) { box.hidden = true; return; }
+  const l = all().find((x) => x.id === pk.ids[pk.i]);
+  if (!l) { closePeek(); return; }
+  const media = (l.media || []).map(parseMedia).filter(Boolean);
+  const { stand, aim } = splitMedia(media);
+  const a = agentOf(l.agent), col = colorFor(l);
+  const thumb = (m, label) => el('figure', { class: 'peek-shot' },
+    m ? el('img', { src: mediaSrc(m.src), alt: label }) : el('span', { class: 'peek-none', text: 'ไม่มีรูป' }), el('figcaption', { text: label }));
+  box.style.setProperty('--ag', col || 'var(--accent)');
+  box.replaceChildren(
+    pk.ids.length > 1 ? el('div', { class: 'peek-tabs', role: 'tablist', 'aria-label': 'lineup ที่อยู่ใกล้กัน' }, pk.ids.map((id, i) => {
+      const x = all().find((y) => y.id === id);
+      const ax = agentOf(x?.agent), ic = x ? iconFor(x) : null;
+      return el('button', {
+        type: 'button', class: 'peek-tab' + (i === pk.i ? ' on' : ''), role: 'tab', 'aria-selected': String(i === pk.i), title: x?.title || '',
+        style: ax?.color ? `--ag:${ax.color}` : null,
+        onclick: (e) => { e.stopPropagation(); pk.i = i; renderPeek(); },
+      }, ax?.icon ? el('img', { src: ax.icon, alt: '' }) : null, ic ? el('img', { class: 'ab-mini', src: ic, alt: '' }) : null);
+    })) : null,
+    el('div', { class: 'peek-head' },
+      a?.icon ? el('img', { class: 'peek-face', src: a.icon, alt: l.agent }) : null,
+      el('div', { class: 'grow' },
+        el('b', { text: l.title || '(ไม่มีชื่อ)' }),
+        el('small', { text: [l.ability, l.site && 'ไซต์ ' + l.site, l.throw].filter(Boolean).join(' · ') })),
+      el('button', { type: 'button', class: 'peek-x', 'aria-label': 'ปิด', onclick: (e) => { e.stopPropagation(); closePeek(); } }, '✕')),
+    el('div', { class: 'peek-shots' }, thumb(stand, 'จุดยืน'), thumb(aim, 'จุดเล็ง')),
+    el('button', { type: 'button', class: 'btn sm primary peek-open', onclick: (e) => { e.stopPropagation(); const id = l.id; closePeek(); openDetail(id); } }, 'เปิดดู ›'));
+  box.hidden = false;
+  hover(l.id);
+  // place it next to the tapped pin, inside the map
+  const wrap = $('#mapWrap').getBoundingClientRect();
+  const pin = document.querySelector(`#pins .pin[data-id="${CSS.escape(pk.anchor)}"]`)?.getBoundingClientRect();
+  const bw = box.offsetWidth, bh = box.offsetHeight;
+  let x = pin ? pin.left - wrap.left + pin.width / 2 - bw / 2 : (wrap.width - bw) / 2;
+  let y = pin ? (pin.top - wrap.top > wrap.height / 2 ? pin.top - wrap.top - bh - 10 : pin.bottom - wrap.top + 10) : 10;
+  x = Math.max(6, Math.min(wrap.width - bw - 6, x));
+  y = Math.max(6, Math.min(wrap.height - bh - 6, y));
+  box.style.left = x + 'px';
+  box.style.top = y + 'px';
 }
 
 function hover(id) {
@@ -576,7 +648,7 @@ function lineupCard(l, num) {
       onmouseleave: () => hover(null),
     },
     num ? el('span', { class: 'card-n', text: String(num) }) : null,
-    num && agentOf(l.agent)?.icon ? el('img', { class: 'card-agent', src: agentOf(l.agent).icon, alt: l.agent, title: l.agent, loading: 'lazy' }) : null,
+    agentOf(l.agent)?.icon ? el('img', { class: 'card-agent', src: agentOf(l.agent).icon, alt: l.agent, title: l.agent, loading: 'lazy' }) : null,
     el('span', { class: 'ab' }, icon ? el('img', { src: icon, alt: '', loading: 'lazy' }) : '◆'),
     el('span', { class: 'card-body' },
       el('span', { class: 'card-title', text: l.title || '(ไม่มีชื่อ)' }),
@@ -898,6 +970,7 @@ function renderUnsynced() {
 /* ---------- map selection ---------- */
 
 function setMap(name) {
+  if (state.peek) closePeek();
   state.map = name;
   state.selected = null;
   state.plan = null;
@@ -1919,6 +1992,7 @@ function cancelPick() {
 }
 
 function onMapClick(e) {
+  if (state.peek && !state.pick && !state.smokePick) { closePeek(); return; }
   const r = e.currentTarget.getBoundingClientRect();
   const pt = { x: round3((e.clientX - r.left) / r.width), y: round3((e.clientY - r.top) / r.height) };
   const sp = state.smokePick;
@@ -2211,6 +2285,7 @@ function bindUi() {
   bindGh();
   bindPlans();
   $('#mapWrap').addEventListener('click', onMapClick);
+  $('#peek').addEventListener('click', (e) => e.stopPropagation()); // clicks inside the preview don't reach the map
 
   const menu = $('#menu');
   const menuBtn = $('#btnMenu');
@@ -2327,6 +2402,7 @@ function bindUi() {
   });
 
   window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && state.peek) closePeek();
     if (e.key === 'Escape' && state.pick) cancelPick();
     if (e.key === 'Escape' && state.smokePick) finishSmokePick();
     if ((e.key === 'ArrowLeft' || e.key === 'ArrowRight') && $('#detail').open && !$('#zoom').open && state.selected) {

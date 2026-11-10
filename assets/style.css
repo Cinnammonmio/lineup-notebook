@@ -615,3 +615,28 @@ dialog.annot::backdrop { background: #000; }
 .plan-icons { gap: 10px; padding: 2px 6px 6px 0; }
 /* agent row filter */
 .role-filter { width: auto !important; min-height: 28px !important; padding: 2px 8px !important; font-size: 13px !important; border-radius: 999px !important; flex: 0 0 auto; }
+
+/* ---------- quick preview on the map ---------- */
+.peek {
+  position: absolute; z-index: 6; width: min(300px, calc(100% - 12px)); padding: 8px;
+  background: #11151cf2; border: 1px solid var(--ag, var(--line)); border-radius: 12px;
+  box-shadow: 0 10px 30px #000c; display: flex; flex-direction: column; gap: 8px; cursor: default;
+  -webkit-backdrop-filter: blur(6px); backdrop-filter: blur(6px);
+}
+.peek-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: none; padding: 2px 2px 6px; border-bottom: 1px solid var(--line); }
+.peek-tab { position: relative; flex: 0 0 auto; width: 38px; height: 38px; padding: 0; border-radius: 9px; border: 2px solid var(--line); background: #0b0e13; cursor: pointer; overflow: visible; }
+.peek-tab > img:first-child { width: 100%; height: 100%; object-fit: cover; border-radius: 7px; opacity: .6; }
+.peek-tab .ab-mini { position: absolute; right: -5px; bottom: -5px; width: 18px; height: 18px; padding: 2px; border-radius: 5px; background: #0b0e13; border: 1px solid var(--ag, var(--line)); }
+.peek-tab.on { border-color: var(--ag, var(--accent)); }
+.peek-tab.on > img:first-child { opacity: 1; }
+.peek-head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.peek-head b { display: block; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.peek-head small { display: block; font-size: 12px; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.peek-face { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; border: 2px solid var(--ag, var(--line)); flex: 0 0 auto; }
+.peek-x { border: 0; background: none; color: var(--muted); font-size: 16px; cursor: pointer; padding: 4px; }
+.peek-shots { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.peek-shot { margin: 0; position: relative; aspect-ratio: 16 / 9; background: #000; border-radius: 6px; overflow: hidden; }
+.peek-shot img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.peek-shot figcaption { position: absolute; left: 4px; top: 4px; font-size: 10px; padding: 0 6px; border-radius: 999px; background: #000c; color: #fff; }
+.peek-none { display: grid; place-items: center; height: 100%; font-size: 11px; color: var(--muted); }
+.peek-open { align-self: stretch; }
