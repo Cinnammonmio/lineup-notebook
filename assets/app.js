@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.2.2';
+const APP_VERSION = '1.3.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -20,6 +20,8 @@ const LS = {
   lastMap: 'lp.lastMap',
   maps: 'lp.api.maps.v3',
   agent: 'lp.agent',
+  gh: 'lp.github.v1',
+  pushed: 'lp.pushed.v1',
   agents: 'lp.api.agents.v1',
 };
 
@@ -269,14 +271,21 @@ function saveLocal() {
 /** Drop local overrides that the deployed data/lineups.json already contains. */
 function pruneLocal() {
   const baseById = new Map(state.base.map((b) => [b.id, b]));
+  const pushed = store.get(LS.pushed, {});
   let changed = false;
   for (const [id, o] of Object.entries(state.local)) {
     const b = baseById.get(id);
-    const synced = o._deleted ? !b : b && stable(clean(b)) === stable(clean(o));
-    if (synced) { delete state.local[id]; changed = true; }
+    // a deletion is done once the site no longer has it AND GitHub can't still have it (pushed but not deployed yet)
+    const synced = o._deleted
+      ? !b && (!(id in pushed) || pushed[id] === DELETED)
+      : b && stable(clean(b)) === stable(clean(o));
+    if (synced) { delete state.local[id]; delete pushed[id]; changed = true; }
   }
+  for (const id of Object.keys(pushed)) if (!state.local[id]) { delete pushed[id]; changed = true; }
+  store.set(LS.pushed, pushed);
   if (changed) saveLocal();
 }
+const DELETED = '__deleted__';
 
 function togglePracticed(id) {
   if (state.practiced[id]) delete state.practiced[id];
@@ -293,7 +302,7 @@ function saveLineup(d) {
 }
 
 function deleteLineup(id) {
-  if (state.base.some((b) => b.id === id)) state.local[id] = { id, _deleted: true };
+  if (state.base.some((b) => b.id === id) || id in store.get(LS.pushed, {})) state.local[id] = { id, _deleted: true };
   else delete state.local[id];
   saveLocal();
   pruneLocal();
@@ -524,11 +533,19 @@ function renderList() {
 }
 
 function renderUnsynced() {
-  const n = Object.keys(state.local).length;
+  const total = Object.keys(state.local).length;
+  const n = unpublished().length;
   const b = $('#unsynced');
-  b.hidden = !n;
-  b.textContent = `${n} ยังไม่ export`;
-  b.title = 'มีการแก้ไขที่เก็บอยู่แค่ในเบราว์เซอร์นี้ — แตะเพื่อส่งออก lineups.json';
+  b.hidden = !total && !gh.busy;
+  b.disabled = gh.busy;
+  if (gh.busy) { b.textContent = '⬆ กำลังขึ้น GitHub…'; b.title = ''; return; }
+  if (ghReady()) {
+    b.textContent = n ? `⬆ ขึ้น GitHub (${n})` : '⏳ รอเว็บอัปเดต';
+    b.title = n ? 'แตะเพื่อส่งการแก้ไขขึ้น GitHub' : 'ส่งขึ้น GitHub แล้ว — เว็บจะอัปเดตใน 1–2 นาที';
+  } else {
+    b.textContent = `${total} ยังไม่ export`;
+    b.title = 'มีการแก้ไขที่เก็บอยู่แค่ในเบราว์เซอร์นี้ — แตะเพื่อส่งออก (หรือตั้งค่า GitHub ในเมนู ⋯)';
+  }
 }
 
 /* ---------- map selection ---------- */
@@ -607,12 +624,105 @@ function pairFig(m, label, badge) {
     badge ? el('span', { class: 'throw-badge', text: badge }) : null);
 }
 
+/* ---------- full-screen image with zoom: pinch / double-tap / wheel / buttons, drag to pan ---------- */
+
+const zm = { s: 1, x: 0, y: 0, pts: new Map(), pinch: null, tap: null, lastTap: 0, img: null, stage: null };
+const Z_MAX = 6;
+
 function zoom(src, caption, badge) {
   const z = $('#zoom');
-  z.replaceChildren(el('img', { src: mediaSrc(src), alt: caption || '' }),
-    ...(caption ? [el('span', { class: 'zoom-cap', text: caption })] : []),
+  zm.img = el('img', { src: mediaSrc(src), alt: caption || '', draggable: 'false' });
+  zm.stage = el('div', { class: 'zoom-stage' }, zm.img);
+  const btn = (t, label, fn) => el('button', { type: 'button', class: 'zoom-btn', title: label, 'aria-label': label, onclick: (e) => { e.stopPropagation(); fn(); } }, t);
+  const center = () => { const r = zm.stage.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+  z.replaceChildren(zm.stage,
+    el('div', { class: 'zoom-bar' },
+      btn('−', 'ซูมออก', () => zoomAt(zm.s / 1.5, ...center(), true)),
+      btn('＋', 'ซูมเข้า', () => zoomAt(zm.s * 1.5, ...center(), true)),
+      btn('⟲', 'ขนาดปกติ', () => zoomReset(true)),
+      btn('✕', 'ปิด', () => z.close())),
+    ...(caption ? [el('span', { class: 'zoom-cap', text: caption + ' · จีบนิ้ว / แตะ 2 ครั้งเพื่อซูม' })] : []),
     ...(badge ? [el('span', { class: 'throw-badge zoom-badge', text: badge })] : []));
+  zoomReset();
+  bindZoomStage(zm.stage);
   z.showModal();
+}
+
+function zoomApply(animate) {
+  const { img, stage } = zm;
+  if (!img) return;
+  // keep the picture on screen: pan only as far as the zoomed image overflows the stage
+  const mx = Math.max(0, (img.offsetWidth * zm.s - stage.clientWidth) / 2);
+  const my = Math.max(0, (img.offsetHeight * zm.s - stage.clientHeight) / 2);
+  zm.x = Math.min(mx, Math.max(-mx, zm.x));
+  zm.y = Math.min(my, Math.max(-my, zm.y));
+  img.style.transition = animate ? 'transform .2s ease-out' : 'none';
+  img.style.transform = `translate(${zm.x}px, ${zm.y}px) scale(${zm.s})`;
+  $('#zoom').classList.toggle('zoomed', zm.s > 1.01);
+}
+function zoomReset(animate) { zm.s = 1; zm.x = 0; zm.y = 0; zoomApply(animate); }
+/** Zoom to scale ns keeping the screen point (px, py) under the finger / cursor. */
+function zoomAt(ns, px, py, animate) {
+  ns = Math.min(Z_MAX, Math.max(1, ns));
+  const r = zm.stage.getBoundingClientRect();
+  const cx = px - (r.left + r.width / 2), cy = py - (r.top + r.height / 2);
+  zm.x = cx - (ns / zm.s) * (cx - zm.x);
+  zm.y = cy - (ns / zm.s) * (cy - zm.y);
+  zm.s = ns;
+  zoomApply(animate);
+}
+
+function bindZoomStage(stage) {
+  const pts = zm.pts;
+  pts.clear();
+  const dist = () => { const [a, b] = [...pts.values()]; return Math.hypot(a.x - b.x, a.y - b.y); };
+  const mid = () => { const [a, b] = [...pts.values()]; return [(a.x + b.x) / 2, (a.y + b.y) / 2]; };
+  stage.addEventListener('pointerdown', (e) => {
+    stage.setPointerCapture(e.pointerId);
+    pts.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    if (pts.size === 2) { zm.pinch = { d: dist(), s: zm.s, m: mid() }; zm.tap = null; }
+    else zm.tap = { x: e.clientX, y: e.clientY, t: Date.now(), onImg: e.target === zm.img };
+    zm.closeOnClick = false;
+  });
+  stage.addEventListener('pointermove', (e) => {
+    const p = pts.get(e.pointerId);
+    if (!p) return;
+    const dx = e.clientX - p.x, dy = e.clientY - p.y;
+    p.x = e.clientX; p.y = e.clientY;
+    if (pts.size === 2 && zm.pinch) {
+      const [mx, my] = mid();
+      zm.x += mx - zm.pinch.m[0]; zm.y += my - zm.pinch.m[1];
+      zm.pinch.m = [mx, my];
+      zoomAt(zm.pinch.s * dist() / zm.pinch.d, mx, my);
+    } else if (pts.size === 1 && zm.s > 1) {
+      zm.x += dx; zm.y += dy;
+      zoomApply();
+    }
+    if (zm.tap && Math.hypot(e.clientX - zm.tap.x, e.clientY - zm.tap.y) > 10) zm.tap = null;
+  });
+  const up = (e) => {
+    pts.delete(e.pointerId);
+    if (pts.size < 2) zm.pinch = null;
+    const t = zm.tap;
+    zm.tap = null;
+    if (!t || e.type === 'pointercancel' || Date.now() - t.t > 300) return;
+    if (Date.now() - zm.lastTap < 320) { // double tap: toggle 2.5× at that spot
+      zm.lastTap = 0;
+      if (zm.s > 1.01) zoomReset(true); else zoomAt(2.5, e.clientX, e.clientY, true);
+    } else {
+      zm.lastTap = Date.now();
+      // tap on the black area closes — on 'click', so the follow-up click can't hit (and reopen) the image underneath
+      zm.closeOnClick = !t.onImg && zm.s <= 1.01;
+    }
+  };
+  stage.addEventListener('pointerup', up);
+  stage.addEventListener('pointercancel', up);
+  stage.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    zoomAt(zm.s * (e.deltaY < 0 ? 1.2 : 1 / 1.2), e.clientX, e.clientY);
+  }, { passive: false });
+  stage.addEventListener('dblclick', (e) => e.preventDefault());
+  stage.addEventListener('click', () => { if (zm.closeOnClick) { zm.closeOnClick = false; $('#zoom').close(); } });
 }
 
 function neighbour(id, dir) {
@@ -738,19 +848,35 @@ function loadImg(src) {
     i.src = url;
   });
 }
-/** WebP when the browser can encode it (most can), otherwise JPEG. */
+/** WebP when the browser can encode it (most can), otherwise JPEG. High quality: crosshair and small details must stay sharp. */
+const IMG_QUALITY = 0.92;
 function canvasBlob(c) {
   return new Promise((res) => c.toBlob((b) => {
-    if (b && b.type === 'image/webp') res(b); else c.toBlob(res, 'image/jpeg', 0.85);
-  }, 'image/webp', 0.8));
+    if (b && b.type === 'image/webp') res(b); else c.toBlob(res, 'image/jpeg', IMG_QUALITY);
+  }, 'image/webp', IMG_QUALITY));
 }
-const MAX_W = 1280;
+/** Full HD: a normal 1920×1080 game screenshot keeps its native resolution. */
+const MAX_W = 1920;
+/** Draw an image at w×h; big reductions are done in halving steps so text and lines don't turn jagged or blurry. */
+function drawScaled(img, w, h) {
+  let src = img, sw = img.naturalWidth || img.width, sh = img.naturalHeight || img.height;
+  while (sw / 2 >= w) {
+    const step = el('canvas', { width: Math.round(sw / 2), height: Math.round(sh / 2) });
+    const sctx = step.getContext('2d');
+    sctx.imageSmoothingQuality = 'high';
+    sctx.drawImage(src, 0, 0, step.width, step.height);
+    src = step; sw = step.width; sh = step.height;
+  }
+  const c = el('canvas', { width: w, height: h });
+  const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
+  ctx.drawImage(src, 0, 0, w, h);
+  return c;
+}
 async function shrinkImage(file) {
   const img = await loadImg(file);
   const k = Math.min(1, MAX_W / img.naturalWidth);
-  const c = el('canvas', { width: Math.round(img.naturalWidth * k), height: Math.round(img.naturalHeight * k) });
-  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
-  return canvasBlob(c);
+  return canvasBlob(drawScaled(img, Math.round(img.naturalWidth * k), Math.round(img.naturalHeight * k)));
 }
 const slug = (s) => norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
 const extOf = (blob) => (blob.type === 'image/webp' ? 'webp' : 'jpg');
@@ -926,7 +1052,7 @@ function openEditor(src) {
   updateTitle();
   renderShots();
   $('#btnDelete').hidden = !exists;
-  $('#mobileWarn').hidden = !isMobile();
+  $('#mobileWarn').hidden = !isMobile() || ghReady();
 
   const dlg = $('#editor');
   if (!dlg.open) dlg.showModal();
@@ -1017,6 +1143,7 @@ function drawShape(ctx, sh, w, h) {
 function drawAnnot() {
   const c = $('#annotCanvas');
   const ctx = c.getContext('2d');
+  ctx.imageSmoothingQuality = 'high';
   ctx.drawImage(annot.img, 0, 0, c.width, c.height);
   for (const sh of annot.shapes) drawShape(ctx, sh, c.width, c.height);
 }
@@ -1156,6 +1283,170 @@ function onMapClick(e) {
   }
 }
 
+/* ---------- publish to GitHub (one commit: data/lineups.json + new images) ---------- */
+
+function defaultRepo() {
+  const host = location.hostname;
+  const first = location.pathname.split('/').filter(Boolean)[0];
+  return host.endsWith('.github.io') && first ? `${host.split('.')[0]}/${first}` : 'Cinnammonmio/lineup-notebook';
+}
+const gh = {
+  cfg: { repo: defaultRepo(), branch: 'main', token: '', auto: true, ...store.get(LS.gh, {}) },
+  busy: false,
+  again: false,
+};
+const ghReady = () => !!gh.cfg.token && /^[\w.-]+\/[\w.-]+$/.test(gh.cfg.repo);
+
+/** Local changes that haven't been pushed in their current form. */
+function unpublished() {
+  const pushed = store.get(LS.pushed, {});
+  return Object.entries(state.local).filter(([id, o]) => pushed[id] !== (o._deleted ? DELETED : stable(clean(o))));
+}
+
+async function ghApi(path, opts = {}) {
+  const r = await fetch(`https://api.github.com/repos/${gh.cfg.repo}${path}`, {
+    ...opts,
+    headers: {
+      Authorization: 'Bearer ' + gh.cfg.token,
+      Accept: 'application/vnd.github+json',
+      'X-GitHub-Api-Version': '2022-11-28',
+      ...(opts.body ? { 'Content-Type': 'application/json' } : {}),
+    },
+    body: opts.body ? JSON.stringify(opts.body) : undefined,
+    cache: 'no-store',
+  });
+  if (r.ok) return r.status === 204 ? null : r.json();
+  const why = { 401: 'token ไม่ถูกต้องหรือหมดอายุ', 403: 'token ไม่มีสิทธิ์เขียน (ต้องเป็น Contents: Read and write)', 404: 'ไม่พบ repo/branch หรือ token ไม่ได้เลือก repo นี้', 409: 'repo ว่างเปล่า', 422: 'มีคนแก้ repo พร้อมกัน' }[r.status];
+  const err = new Error(why || `GitHub ตอบกลับ ${r.status}`);
+  err.status = r.status;
+  throw err;
+}
+
+const b64ToText = (b64) => new TextDecoder().decode(Uint8Array.from(atob(b64.replace(/\s/g, '')), (c) => c.charCodeAt(0)));
+const blobToB64 = (blob) => new Promise((res, rej) => {
+  const fr = new FileReader();
+  fr.onload = () => res(String(fr.result).split(',')[1]);
+  fr.onerror = () => rej(fr.error);
+  fr.readAsDataURL(blob);
+});
+
+/** Apply this browser's edits on top of the lineups currently on GitHub. */
+function mergeLocal(remote) {
+  const out = [];
+  const seen = new Set();
+  for (const r of remote) {
+    if (!r || typeof r !== 'object' || !r.id) continue;
+    seen.add(r.id);
+    const o = state.local[r.id];
+    if (o?._deleted) continue;
+    out.push(o ? clean(o) : r);
+  }
+  for (const [id, o] of Object.entries(state.local)) if (!seen.has(id) && !o._deleted) out.push(clean(o));
+  return out;
+}
+
+async function publishOnce() {
+  const branch = encodeURIComponent(gh.cfg.branch || 'main');
+  const ref = await ghApi(`/git/ref/heads/${branch}`);
+  const head = ref.object.sha;
+  const commit = await ghApi(`/git/commits/${head}`);
+  let remote = [];
+  try {
+    const f = await ghApi(`/contents/data/lineups.json?ref=${head}`);
+    const text = f.content ? b64ToText(f.content) : b64ToText((await ghApi(`/git/blobs/${f.sha}`)).content);
+    const j = JSON.parse(text);
+    remote = Array.isArray(j) ? j : j.lineups || [];
+  } catch (e) { if (e.status !== 404) throw e; }
+
+  const items = mergeLocal(remote);
+  const tree = [{ path: 'data/lineups.json', mode: '100644', type: 'blob', content: JSON.stringify(items, null, 2) + '\n' }];
+  const paths = [...new Set(items.flatMap(mediaPaths))].filter((x) => localUrls.has(x));
+  for (const path of paths) {
+    const rec = await mediaDb.get(path).catch(() => null);
+    if (!rec?.blob) continue;
+    const blob = await ghApi('/git/blobs', { method: 'POST', body: { content: await blobToB64(rec.blob), encoding: 'base64' } });
+    tree.push({ path, mode: '100644', type: 'blob', sha: blob.sha });
+  }
+  const changes = unpublished();
+  const nameOf = (id, o) => o.title || remote.find((r) => r?.id === id)?.title || state.base.find((x) => x.id === id)?.title || id;
+  const titles = changes.map(([id, o]) => (o._deleted ? 'ลบ ' : '') + nameOf(id, o)).slice(0, 5).join(', ');
+  const newTree = await ghApi('/git/trees', { method: 'POST', body: { base_tree: commit.tree.sha, tree } });
+  const newCommit = await ghApi('/git/commits', { method: 'POST', body: { message: `Update lineups from ARC: ${titles || 'sync'}`, tree: newTree.sha, parents: [head] } });
+  await ghApi(`/git/refs/heads/${branch}`, { method: 'PATCH', body: { sha: newCommit.sha } });
+
+  // remember what was pushed; local copies stay until the deployed site has them (pruneLocal)
+  const pushed = store.get(LS.pushed, {});
+  for (const [id, o] of changes) pushed[id] = o._deleted ? DELETED : stable(clean(o));
+  store.set(LS.pushed, pushed);
+  return { lineups: items.length, images: tree.length - 1 };
+}
+
+async function publish({ quiet } = {}) {
+  if (!ghReady()) { openGhDialog(); return; }
+  if (gh.busy) { gh.again = true; return; }
+  if (!unpublished().length) { if (!quiet) toast('ไม่มีอะไรต้องขึ้น GitHub'); return; }
+  gh.busy = true;
+  renderUnsynced();
+  try {
+    let res;
+    try { res = await publishOnce(); } catch (e) { if (e.status === 422) res = await publishOnce(); else throw e; } // someone pushed meanwhile: retry on the new head
+    toast(`ขึ้น GitHub แล้ว (${res.lineups} lineup${res.images ? `, ${res.images} รูป` : ''}) — มือถือเห็นใน 1–2 นาที`);
+  } catch (e) {
+    toast('ขึ้น GitHub ไม่ได้: ' + (navigator.onLine === false ? 'ไม่มีอินเทอร์เน็ต' : e.message) + ' — ข้อมูลยังอยู่ในเครื่อง');
+  } finally {
+    gh.busy = false;
+    pruneLocal();
+    renderUnsynced();
+    if (gh.again) { gh.again = false; publish({ quiet: true }); }
+  }
+}
+
+function openGhDialog() {
+  const f = $('#ghForm').elements;
+  f.token.value = gh.cfg.token;
+  f.repo.value = gh.cfg.repo;
+  f.branch.value = gh.cfg.branch;
+  f.auto.checked = gh.cfg.auto;
+  $('#ghStatus').textContent = gh.cfg.token ? 'ตั้งค่าไว้แล้ว' : 'ยังไม่ได้ใส่ token';
+  $('#ghForget').hidden = !gh.cfg.token;
+  $('#ghDialog').showModal();
+}
+function readGhForm() {
+  const f = $('#ghForm').elements;
+  return { token: f.token.value.trim(), repo: f.repo.value.trim().replace(/^https?:\/\/github\.com\//, '').replace(/\.git$|\/$/g, ''), branch: f.branch.value.trim() || 'main', auto: f.auto.checked };
+}
+function bindGh() {
+  const dlg = $('#ghDialog');
+  dlg.querySelector('[data-close]').addEventListener('click', () => dlg.close());
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) dlg.close(); });
+  $('#ghTest').addEventListener('click', async () => {
+    const prev = gh.cfg;
+    gh.cfg = { ...gh.cfg, ...readGhForm() };
+    $('#ghStatus').textContent = 'กำลังทดสอบ…';
+    try {
+      await ghApi(`/git/ref/heads/${encodeURIComponent(gh.cfg.branch)}`);
+      $('#ghStatus').textContent = '✓ เชื่อมต่อได้ (สิทธิ์เขียนจะเช็กตอนขึ้น GitHub ครั้งแรก)';
+    } catch (e) { $('#ghStatus').textContent = '✕ ' + e.message; }
+    gh.cfg = prev;
+  });
+  $('#ghForget').addEventListener('click', () => {
+    gh.cfg.token = '';
+    store.set(LS.gh, gh.cfg);
+    dlg.close();
+    renderUnsynced();
+    toast('ลบ token ออกจากเครื่องนี้แล้ว');
+  });
+  $('#ghForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    gh.cfg = { ...gh.cfg, ...readGhForm() };
+    store.set(LS.gh, gh.cfg);
+    dlg.close();
+    renderUnsynced();
+    toast(ghReady() ? 'บันทึกการตั้งค่า GitHub แล้ว' : 'ยังไม่ได้ใส่ token');
+    if (ghReady() && unpublished().length) publish();
+  });
+}
+
 /* ---------- import / export ---------- */
 
 const CRC_TABLE = Array.from({ length: 256 }, (_, n) => {
@@ -1245,7 +1536,12 @@ async function importJson(file) {
 
 function bindUi() {
   $('#btnAdd').addEventListener('click', startAdd);
-  $('#unsynced').addEventListener('click', exportJson);
+  $('#unsynced').addEventListener('click', () => {
+    if (!ghReady()) exportJson();
+    else if (unpublished().length) publish();
+    else toast('ส่งขึ้น GitHub แล้ว — เว็บจะอัปเดตใน 1–2 นาที');
+  });
+  bindGh();
   $('#mapWrap').addEventListener('click', onMapClick);
 
   const menu = $('#menu');
@@ -1258,6 +1554,8 @@ function bindUi() {
     if (!act) return;
     setMenu(false);
     if (act === 'export') exportJson();
+    if (act === 'github') openGhDialog();
+    if (act === 'publish') publish();
     if (act === 'import') $('#importFile').click();
     if (act === 'refresh') { store.del(LS.maps); store.del(LS.agents); location.reload(); }
     if (act === 'reset') {
@@ -1341,6 +1639,7 @@ function bindUi() {
     if (!confirm(`ลบ “${d.title || 'lineup นี้'}”?`)) return;
     deleteLineup(d.id);
     cleanLocalMedia();
+    if (ghReady() && gh.cfg.auto) publish({ quiet: true });
     $('#editor').close();
     render();
     toast('ลบแล้ว — export เพื่ออัปเดตไฟล์ใน repo');
@@ -1354,11 +1653,12 @@ function bindUi() {
     try { d.media = await buildMedia(d); } catch (err) { toast('บันทึกรูปไม่ได้: ' + err.message); return; }
     saveLineup(d);
     cleanLocalMedia();
+    if (ghReady() && gh.cfg.auto) publish({ quiet: true });
     $('#editor').close();
     state.map = canonMap(d.map) || d.map;
     store.set(LS.lastMap, state.map);
     openDetail(d.id);
-    toast('บันทึกในเครื่องแล้ว');
+    toast(ghReady() && gh.cfg.auto ? 'บันทึกแล้ว — กำลังขึ้น GitHub…' : 'บันทึกในเครื่องแล้ว');
   });
 
   window.addEventListener('hashchange', () => {
@@ -1375,7 +1675,8 @@ function bindUi() {
       if (n) openDetail(n.id);
     }
   });
-  $('#zoom').addEventListener('click', () => $('#zoom').close());
+  $('#zoom').addEventListener('close', () => { zm.img = null; zm.stage = null; zm.pts.clear(); });
+  window.addEventListener('resize', () => { if ($('#zoom').open) zoomApply(); });
 }
 
 const LANDSCAPE_PHONE = matchMedia('(orientation: landscape) and (max-height: 600px)');
