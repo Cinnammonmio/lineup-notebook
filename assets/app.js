@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.10.0';
+const APP_VERSION = '1.11.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -441,7 +441,7 @@ function lineEls(l, cls, svg, pins, interactive, num) {
       style: `left:${l.to.x * 100}%;top:${l.to.y * 100}%` + (col ? `;--ag:${col}` : ''),
       title: l.title || '',
       'aria-label': interactive ? (l.title || 'lineup') : null,
-      onclick: interactive ? (e) => { e.stopPropagation(); peekAt(id); } : null,
+      onclick: interactive ? (e) => { e.stopPropagation(); if (touchUi()) selectFromPin(id); else peekAt(id); } : null,
       onmouseenter: interactive ? () => hover(id) : null,
       onmouseleave: interactive ? () => hover(null) : null,
     }, icon ? el('img', { src: icon, alt: '' }) : '◆', num ? el('span', { class: 'pin-n', text: String(num) }) : null));
@@ -483,9 +483,36 @@ function renderMap() {
 
 /** Touch screens: a card tap shows the quick preview at the lineup's pin first; mouse: open it straight away. */
 const touchUi = () => matchMedia('(pointer: coarse)').matches || navigator.maxTouchPoints > 0;
-function openFromCard(id) {
-  if (touchUi() && document.querySelector(`#pins .pin[data-id="${CSS.escape(id)}"]`)) peekAt(id);
-  else openDetail(id);
+/** Card tap: highlight that lineup on the map (others stay visible, dimmed). Tap again to clear. */
+function highlightLineup(id) {
+  if (state.peek) closePeek();
+  state.selected = state.selected === id ? null : id;
+  updateHash();
+  render();
+}
+
+/** Touch: tapping a pin highlights it and scrolls its card into view; tapping the same spot again
+ *  cycles through lineups whose pins are close together. */
+function selectFromPin(id) {
+  const ids = nearPins(id);
+  const cur = ids.indexOf(state.selected);
+  const pick = cur >= 0 ? ids[(cur + 1) % ids.length] : id;
+  state.selected = pick;
+  updateHash();
+  render();
+  const card = document.querySelector(`#list .card[data-id="${CSS.escape(pick)}"]`);
+  card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  if (ids.length > 1) toast(`${ids.indexOf(pick) + 1}/${ids.length} · แตะซ้ำเพื่อสลับ lineup ที่ซ้อนกัน`);
+}
+
+function nearPins(id) {
+  const pinEls = [...document.querySelectorAll('#pins .pin[data-id]')];
+  const centre = (n) => { const r = n.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
+  const me = pinEls.find((n) => n.dataset.id === id);
+  if (!me) return [id];
+  const [cx, cy] = centre(me);
+  return [...new Set(pinEls.map((n) => { const [x, y] = centre(n); return { id: n.dataset.id, d: Math.hypot(x - cx, y - cy) }; })
+    .filter((x) => x.d <= PEEK_RADIUS).sort((a, b) => a.d - b.d).map((x) => x.id))];
 }
 
 /* ---------- tap a pin: quick preview; pins close together become buttons to switch between ---------- */
@@ -493,14 +520,8 @@ function openFromCard(id) {
 const PEEK_RADIUS = 30; // px: pins this close to the tapped one are offered too
 
 function peekAt(id) {
-  const pinEls = [...document.querySelectorAll('#pins .pin[data-id]')];
-  const centre = (n) => { const r = n.getBoundingClientRect(); return [r.left + r.width / 2, r.top + r.height / 2]; };
-  const me = pinEls.find((n) => n.dataset.id === id);
-  if (!me) { openDetail(id); return; }
-  const [cx, cy] = centre(me);
-  const near = pinEls.map((n) => { const [x, y] = centre(n); return { id: n.dataset.id, d: Math.hypot(x - cx, y - cy) }; })
-    .filter((x) => x.d <= PEEK_RADIUS).sort((a, b) => a.d - b.d).map((x) => x.id);
-  state.peek = { ids: [...new Set(near)], i: 0, anchor: id };
+  if (!document.querySelector(`#pins .pin[data-id="${CSS.escape(id)}"]`)) { openDetail(id); return; }
+  state.peek = { ids: nearPins(id), i: 0, anchor: id };
   renderPeek();
 }
 
@@ -646,12 +667,11 @@ function renderTabs() {
 
 function lineupCard(l, num) {
   const icon = iconFor(l);
-  const done = !!state.practiced[l.id];
   const col = colorFor(l);
   return el('li', { class: 'card' + (state.selected === l.id ? ' sel' : ''), 'data-id': l.id, style: col ? `--ag:${col}` : null },
     el('button', {
       type: 'button', class: 'card-main',
-      onclick: () => openFromCard(l.id),
+      onclick: () => highlightLineup(l.id),
       onmouseenter: () => hover(l.id),
       onmouseleave: () => hover(null),
     },
@@ -666,12 +686,7 @@ function lineupCard(l, num) {
       l.example || l._local ? el('span', { class: 'chips' },
         l.example ? el('span', { class: 'chip ex', text: 'ตัวอย่าง' }) : null,
         l._local ? el('span', { class: 'chip warn', text: 'ยังไม่ export' }) : null) : null)),
-    el('button', {
-      type: 'button', class: 'tick' + (done ? ' on' : ''), 'aria-pressed': String(done),
-      title: done ? 'ซ้อมแล้ว (แตะเพื่อยกเลิก)' : 'ทำเครื่องหมายว่าซ้อมแล้ว',
-      'aria-label': 'ซ้อมแล้ว',
-      onclick: () => togglePracticed(l.id),
-    }, '✓'));
+    el('button', { type: 'button', class: 'view-btn', title: 'ดู lineup', 'aria-label': 'ดู ' + (l.title || 'lineup'), onclick: () => openDetail(l.id) }, 'ดู ›'));
 }
 
 /** Agent portrait with the ability icon in the corner (dashed ring = smoke placed from the map). */
@@ -736,10 +751,16 @@ function renderFilterBar() {
     sel('site', 'ไซต์', [['all', 'ทุกไซต์'], ...SITES.map((x) => [x, 'ไซต์ ' + x])]),
     sel('type', 'ประเภท', [['all', 'ทุกประเภท'], ['entry', 'เปิดไซต์'], ['execute', 'Execute'], ['post-plant', 'Post-plant'], ['retake', 'รีเทค'], ['info', 'หาข้อมูล'], ['hold', 'ตั้งรับ'], ['smoke', 'Smoke'], ['other', 'อื่น ๆ']]),
     sel('role', 'บทบาทเอเจนต์', [['all', 'ทุกบทบาท'], ['has', 'มี lineup'], ['controller', 'Controller'], ['duelist', 'Duelist'], ['initiator', 'Initiator'], ['sentinel', 'Sentinel']]),
-    active ? el('button', { type: 'button', class: 'reset-ag', onclick: () => { Object.assign(state.f, { side: 'all', site: 'all', type: 'all', role: 'all' }); saveFilters(); render(); } }, 'ล้าง') : null);
+    ...(active ? [el('button', { type: 'button', class: 'reset-ag', onclick: () => { Object.assign(state.f, { side: 'all', site: 'all', type: 'all', role: 'all' }); saveFilters(); render(); } }, 'ล้าง')] : []));
 }
 
 function renderList() {
+  const keepTop = $('#list').scrollTop; // re-rendering must not jump the list back to the top
+  renderListInner();
+  $('#list').scrollTop = keepTop;
+}
+
+function renderListInner() {
   renderFilterBar();
   if (state.tab !== 'plans' || state.plan) state.hoverPlan = null;
   const ul = $('#list');

@@ -157,7 +157,7 @@ a { color: var(--accent); }
 .side-attack.ln { stroke: var(--atk); } .side-attack.st { fill: var(--atk); }
 .side-defense.ln { stroke: var(--def); } .side-defense.st { fill: var(--def); }
 .side-none.ln { stroke: var(--muted); } .side-none.st { fill: var(--muted); }
-.ln.dim, .st.dim { opacity: .15; }
+.ln.dim, .st.dim { opacity: .35; }
 .ln.sel { stroke-width: 4; stroke-dasharray: none; opacity: 1; }
 .ln.hl, .st.hl { opacity: 1; }
 .tmp { fill: var(--accent); stroke: #000; stroke-width: 2; vector-effect: non-scaling-stroke; }
@@ -173,7 +173,7 @@ a { color: var(--accent); }
 .pin.side-defense { border-color: var(--def); }
 .pin:hover, .pin.hl, .pin.sel { transform: translate(-50%, -50%) scale(1.2); z-index: 2; opacity: 1; }
 .pin.sel { box-shadow: 0 0 0 3px #0b0e13, 0 0 0 5px var(--accent); }
-.pin.dim { opacity: .3; }
+.pin.dim { opacity: .45; }
 @media (max-width: 600px) { .pin { width: 30px; height: 30px; padding: 3px; } }
 
 .pick-banner {
@@ -646,3 +646,9 @@ dialog.annot::backdrop { background: #000; }
 .filter-bar::-webkit-scrollbar { display: none; }
 .fsel { width: auto !important; min-height: 30px !important; padding: 2px 26px 2px 10px !important; font-size: 13px !important; border-radius: 999px !important; flex: 0 0 auto; }
 .fsel.on { border-color: var(--accent) !important; color: var(--accent); }
+
+/* card: right button opens the lineup; tapping the card highlights it on the map */
+.view-btn { flex: 0 0 auto; min-width: 64px; border: 0; border-left: 1px solid var(--line); background: none; color: var(--accent); font-weight: 700; font-size: 14px; cursor: pointer; padding: 0 12px; }
+.view-btn:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
+.card.sel { border-color: var(--ag, var(--accent)); box-shadow: 0 0 0 1px var(--ag, var(--accent)); background: color-mix(in srgb, var(--ag, var(--accent)) 8%, var(--panel)); }
+.map-noimg { pointer-events: none; } /* the "no minimap" placeholder must not block taps on pins */
