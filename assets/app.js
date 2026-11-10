@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.5.0';
+const APP_VERSION = '1.5.1';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -611,7 +611,7 @@ const AIM_RE = /เล็ง|aim|ปา|throw/i;
 function splitMedia(list) {
   const imgs = list.filter((m) => IMG_RE.test(m.src));
   const kindOf = (m) => {
-    const f = m.src.match(/-(stand|aim)(2)?\.\w+$/i);
+    const f = m.src.match(/-(stand|aim)(2)?(?:-v\w+)?\.\w+$/i);
     if (f) return f[1].toLowerCase() + (f[2] || '');
     const c = m.caption || '';
     const two = /2\s*$/.test(c) ? '2' : '';
@@ -959,9 +959,11 @@ async function shrinkImage(file) {
 }
 const slug = (s) => norm(s).replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'x';
 const extOf = (blob) => (blob.type === 'image/webp' ? 'webp' : 'jpg');
-function shotPath(d, kind, blob, oldSrc) {
-  if (oldSrc && /^media\//.test(oldSrc) && oldSrc.endsWith('.' + extOf(blob))) return oldSrc; // overwrite the same file
-  return `media/${slug(d.map)}/${[slug(d.agent), slug(d.site), slug(d.ability), d.id, kind].join('-')}.${extOf(blob)}`;
+/** Every edited picture gets a new file name (…-aim-v<time>.webp): overwriting the same name would keep showing
+ *  the old picture from caches, and the site would look like the edit wasn't saved. Old files are removed on publish. */
+function shotPath(d, kind, blob) {
+  const ver = 'v' + Date.now().toString(36);
+  return `media/${slug(d.map)}/${[slug(d.agent), slug(d.site), slug(d.ability), d.id, kind, ver].join('-')}.${extOf(blob)}`;
 }
 
 /* ---------- editor ---------- */
@@ -1208,7 +1210,7 @@ async function buildMedia(d) {
     if (!sh) continue;
     let src = sh.src;
     if (sh.dirty) {
-      src = shotPath(d, kind, sh.blob, sh.src);
+      src = shotPath(d, kind, sh.blob);
       await putLocalMedia(src, { blob: sh.blob, orig: sh.orig, shapes: sh.shapes || [] });
     }
     out.push({ src, caption: SHOT_LABEL[kind] });
@@ -1627,6 +1629,13 @@ async function publishOnce() {
     const blob = await ghApi('/git/blobs', { method: 'POST', body: { content: await blobToB64(rec.blob), encoding: 'base64' } });
     tree.push({ path, mode: '100644', type: 'blob', sha: blob.sha });
   }
+  // remove pictures no lineup uses any more (replaced or deleted) — only ones that really exist in the repo
+  const keep = new Set(items.flatMap(mediaPaths));
+  const gone = [...new Set(remote.flatMap(mediaPaths))].filter((x) => /^media\//.test(x) && !keep.has(x));
+  if (gone.length) {
+    const existing = new Set((await ghApi(`/git/trees/${commit.tree.sha}?recursive=1`)).tree.map((t) => t.path));
+    for (const path of gone) if (existing.has(path)) tree.push({ path, mode: '100644', type: 'blob', sha: null });
+  }
   const changes = unpublished();
   const nameOf = (id, o) => o.title || remote.find((r) => r?.id === id)?.title || state.base.find((x) => x.id === id)?.title || id;
   const titles = changes.map(([id, o]) => (o._deleted ? 'ลบ ' : '') + nameOf(id, o)).slice(0, 5).join(', ');
@@ -1638,7 +1647,7 @@ async function publishOnce() {
   const pushed = store.get(LS.pushed, {});
   for (const [id, o] of changes) pushed[id] = o._deleted ? DELETED : stable(clean(o));
   store.set(LS.pushed, pushed);
-  return { lineups: items.length, images: tree.length - 1 };
+  return { lineups: items.length, images: tree.filter((t) => t.sha).length };
 }
 
 async function publish({ quiet } = {}) {
