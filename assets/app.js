@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.8.0';
+const APP_VERSION = '1.8.1';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -18,7 +18,8 @@ const LS = {
   local: 'lp.local.v1',
   practiced: 'lp.practiced.v1',
   lastMap: 'lp.lastMap',
-  maps: 'lp.api.maps.v3',
+  maps: 'lp.api.maps.v4',
+  role: 'lp.agentRole',
   agent: 'lp.agent',
   gh: 'lp.github.v1',
   fit: 'lp.detailFit',
@@ -118,7 +119,7 @@ const state = {
   local: store.get(LS.local, {}),
   practiced: store.get(LS.practiced, {}),
   map: null,
-  f: { agents: new Set([store.get(LS.agent, [])].flat().filter((x) => typeof x === 'string')), side: 'all', site: 'all', type: 'all', q: '', todo: false },
+  f: { agents: new Set([store.get(LS.agent, [])].flat().filter((x) => typeof x === 'string')), role: store.get(LS.role, 'all'), side: 'all', site: 'all', type: 'all', q: '', todo: false },
   selected: null,
   plan: null,
   hoverPlan: null,
@@ -150,7 +151,10 @@ function pickMaps(arr) {
   return arr
     .filter((m) => m.tacticalDescription && m.displayIcon && m.displayName)
     .filter((m) => !seen.has(norm(m.displayName)) && seen.add(norm(m.displayName)))
-    .map((m) => ({ name: m.displayName, icon: m.displayIcon, banner: m.listViewIcon || m.splash || null, sites: mapSites(m) }))
+    .map((m) => ({
+      name: m.displayName, icon: m.displayIcon, banner: m.listViewIcon || m.splash || null, sites: mapSites(m),
+      scale: Math.abs(m.xMultiplier) || null, // minimap share of width per game unit (1 unit = 1 cm)
+    }))
     .sort((a, b) => a.name.localeCompare(b.name));
 }
 
@@ -496,8 +500,11 @@ function renderAgents() {
   const onMap = all().filter((l) => norm(l.map) === norm(state.map));
   const count = (name) => onMap.filter((l) => norm(l.agent) === norm(name)).length;
   // every agent from the API, plus any agent name used in lineups but missing from the API
-  const list = state.agents.map((a) => ({ name: a.name, icon: a.icon }));
+  const roleF = state.f.role;
+  let list = state.agents.map((a) => ({ name: a.name, icon: a.icon, role: a.role }));
   for (const l of all()) if (l.agent && !list.some((a) => norm(a.name) === norm(l.agent))) list.push({ name: l.agent });
+  if (roleF === 'has') list = list.filter((a) => count(a.name) || state.f.agents.has(norm(a.name)));
+  else if (roleF !== 'all') list = list.filter((a) => norm(a.role) === roleF || state.f.agents.has(norm(a.name)));
   list.sort((x, y) => x.name.localeCompare(y.name));
   const keepLeft = row.scrollLeft;
   row.replaceChildren();
@@ -587,6 +594,14 @@ function lineupCard(l, num) {
     }, '✓'));
 }
 
+/** Agent portrait with the ability icon in the corner (dashed ring = smoke placed from the map). */
+function planIcon(agent, ability, title, smoke) {
+  const a = agentOf(agent), ab = abilityIcon(agent, ability);
+  return el('span', { class: 'plan-ic' + (smoke ? ' smoke' : ''), title, style: a?.color ? `--ag:${a.color}` : null },
+    a?.icon ? el('img', { class: 'face', src: a.icon, alt: agent }) : el('span', { text: (agent || '?')[0] }),
+    ab && ab !== a?.icon ? el('img', { class: 'abil', src: ab, alt: ability }) : null);
+}
+
 function renderPlanList(ul, cnt) {
   const list = plans().filter((x) => norm(x.map) === norm(state.map)).sort((a, b) => (a.title || '').localeCompare(b.title || '', 'th'));
   cnt.replaceChildren(
@@ -614,13 +629,8 @@ function renderPlanList(ul, cnt) {
           el('span', { class: 'card-meta' },
             pl.side ? el('i', { class: 'side-dot ' + pl.side, title: SIDE_LABEL[pl.side] }) : null,
             [pl.site && 'ไซต์ ' + pl.site, `${items.length} lineup`, pl.smokes?.length && `${pl.smokes.length} สโมก`].filter(Boolean).join(' · ')),
-          el('span', { class: 'plan-icons' }, items.map((l, i) => {
-            const ic = iconFor(l), col = colorFor(l);
-            return el('span', { class: 'plan-ic', title: `${i + 1}. ${l.title}`, style: col ? `--ag:${col}` : null }, ic ? el('img', { src: ic, alt: '' }) : String(i + 1));
-          }), (pl.smokes || []).map((sm) => {
-            const ic = abilityIcon(sm.agent, sm.ability), col = agentOf(sm.agent)?.color;
-            return el('span', { class: 'plan-ic smoke', title: `สโมก: ${sm.agent} · ${sm.ability}`, style: col ? `--ag:${col}` : null }, ic ? el('img', { src: ic, alt: '' }) : '☁');
-          })),
+          el('span', { class: 'plan-icons' }, items.map((l, i) => planIcon(l.agent, l.ability, `${i + 1}. ${l.title}`)),
+            (pl.smokes || []).map((sm) => planIcon(sm.agent, sm.ability, `สโมก: ${sm.agent} · ${sm.ability}`, true))),
           pl._local ? el('span', { class: 'chips' }, el('span', { class: 'chip warn', text: 'ยังไม่ export' })) : null)),
       el('button', { type: 'button', class: 'tick', title: 'แก้ไขแผน', 'aria-label': 'แก้ไขแผน', onclick: () => openPlanEditor(pl) }, '✎')));
   }
@@ -664,8 +674,14 @@ function renderList() {
   const picked = [...state.f.agents].map((k) => agentOf(k)?.name || k);
   const agentName = picked.length ? picked.join(', ') : '';
   const withLineups = [...new Set(all().filter((l) => norm(l.map) === norm(state.map) && l.agent).map((l) => norm(l.agent)))];
+  const roleSel = el('select', {
+    class: 'role-filter', 'aria-label': 'กรองแถวเอเจนต์', title: 'กรองแถวเอเจนต์',
+    onchange: (e) => { state.f.role = e.target.value; store.set(LS.role, state.f.role); render(); },
+  }, [['all', 'ทุกบทบาท'], ['has', 'มี lineup'], ['controller', 'Controller'], ['duelist', 'Duelist'], ['initiator', 'Initiator'], ['sentinel', 'Sentinel']]
+    .map(([v, t]) => el('option', { value: v, text: t, selected: state.f.role === v })));
   cnt.replaceChildren(
     el('span', { class: 'grow cnt-text', text: (picked.length ? (picked.length > 2 ? `${picked.length} เอเจนต์` : agentName) : 'ทุกเอเจนต์') + ` · ${list.length} lineup` }),
+    roleSel,
     ...(picked.length
       ? [el('button', { type: 'button', class: 'reset-ag', onclick: () => setAgents([]) }, 'ดูทุกเอเจนต์')]
       : withLineups.length > 1
@@ -710,9 +726,16 @@ function abilityIcon(agent, ability) {
   const a = agentOf(agent);
   return a?.abilities.find((x) => norm(x.name) === norm(ability))?.icon || a?.icon || null;
 }
+/** Approximate in-game smoke radius in game units (cm). */
+const SMOKE_RADIUS = {
+  'sky smoke': 415, 'dark cover': 410, nebula: 475, 'poison cloud': 450, 'toxic screen': 300,
+  cove: 450, cascade: 300, 'high tide': 300, ruse: 410, cloudburst: 335, 'cyber cage': 360,
+};
 function smokeEl(sm) {
   const col = agentOf(sm.agent)?.color, ic = abilityIcon(sm.agent, sm.ability);
-  return el('span', { class: 'smoke-pin', title: `สโมก ${sm.agent} · ${sm.ability}`, style: `left:${sm.x * 100}%;top:${sm.y * 100}%` + (col ? `;--ag:${col}` : '') },
+  const scale = mapOf(state.map)?.scale;
+  const size = scale ? 2 * (SMOKE_RADIUS[norm(sm.ability)] || 420) * scale * 100 : 7; // % of the map width
+  return el('span', { class: 'smoke-pin', title: `สโมก ${sm.agent} · ${sm.ability}`, style: `left:${sm.x * 100}%;top:${sm.y * 100}%;width:${size.toFixed(2)}%` + (col ? `;--ag:${col}` : '') },
     ic ? el('img', { src: ic, alt: '' }) : '☁');
 }
 
