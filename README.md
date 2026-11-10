@@ -1,4 +1,4 @@
-# สมุด Lineup
+# ARC — Valorant Lineups
 
 เว็บจด lineup Valorant ส่วนตัว เปิดได้ทั้งคอมและมือถือ ไม่มีโฆษณา ไม่ต้องสมัครสมาชิก
 เป็นไฟล์ HTML/CSS/JS ล้วน ไม่ต้อง build — รายละเอียดแผนดูที่ [PLAN.md](PLAN.md)
@@ -42,5 +42,5 @@ python -m http.server 8000
 
 ---
 
-สมุด Lineup เป็นโปรเจกต์ส่วนตัว ไม่ได้รับการรับรองจาก Riot Games และไม่ได้สะท้อนความเห็นของ Riot Games
+ARC เป็นโปรเจกต์ส่วนตัว ไม่ได้รับการรับรองจาก Riot Games และไม่ได้สะท้อนความเห็นของ Riot Games
 ภาพแมพ/เอเจนต์ดึงจาก [valorant-api.com](https://valorant-api.com) (API ไม่เป็นทางการ)

@@ -1,12 +1,12 @@
 'use strict';
 
-/* Service worker สำหรับสมุด Lineup
+/* Service worker สำหรับ ARC
  * - หน้าเว็บ + data/lineups.json: ลองเน็ตก่อน ถ้าไม่มีเน็ตใช้ของในแคช
  * - css/js/รูป (รวมรูปแมพจาก valorant-api): ใช้ของในแคชทันที แล้วอัปเดตเบื้องหลัง
  * - คลิปวิดีโอ: ไม่แคช โหลดตอนกดดูเท่านั้น (ไฟล์ใหญ่)
  * เปลี่ยน VERSION เมื่ออยากล้างแคชทั้งหมด
  */
-const VERSION = 'v1';
+const VERSION = 'v2';
 const SHELL = 'lp-shell-' + VERSION;
 const RUNTIME = 'lp-runtime-' + VERSION;
 const SHELL_FILES = [
