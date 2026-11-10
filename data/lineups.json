@@ -25,7 +25,15 @@
       {
         "src": "media/summit/killjoy-a-nanoswarm-mwavgi9kq4bv-aim.webp",
         "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/summit/killjoy-a-nanoswarm-mwavgi9kq4bv-aim2.webp",
+        "caption": "จุดเล็ง 2"
       }
-    ]
+    ],
+    "layout": {
+      "col": 0.469,
+      "aim": 0.618
+    }
   }
 ]
