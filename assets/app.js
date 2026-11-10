@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.4.1';
+const APP_VERSION = '1.4.2';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -177,7 +177,10 @@ function mapSites(m) {
 function siteLabels(m, box) {
   for (const st of m?.sites || []) {
     const kind = st.name === 'ATTACKER' ? ' spawn atk' : st.name === 'DEFENDER' ? ' spawn def' : '';
-    box.append(el('span', { class: 'site-lbl' + kind, style: `left:${st.x * 100}%;top:${st.y * 100}%`, text: st.name }));
+    // long words (ATTACKER/DEFENDER) are kept away from the edge so they aren't cut off
+    const lim = kind ? 0.15 : 0.04;
+    const x = Math.min(1 - lim, Math.max(lim, st.x)), y = Math.min(0.95, Math.max(0.05, st.y));
+    box.append(el('span', { class: 'site-lbl' + kind, style: `left:${x * 100}%;top:${y * 100}%`, text: st.name }));
   }
 }
 
@@ -999,10 +1002,11 @@ async function setShotFile(kind, file) {
     state.editing.shots[kind] = { ...state.editing.shots[kind], blob, orig: blob, shapes: [], url: URL.createObjectURL(blob), dirty: true };
     state.editing.activeShot = kind === 'stand' && !state.editing.shots.aim ? 'aim' : kind;
     renderShots();
+    annotateShot(kind, 'crop'); // crop right away so the picture is already close-up (Cancel keeps it as is)
   } catch (e) { toast(e.message); }
 }
 
-async function annotateShot(kind) {
+async function annotateShot(kind, mode) {
   const s = state.editing.shots[kind];
   if (!s) return;
   let { orig, shapes } = s;
@@ -1013,7 +1017,7 @@ async function annotateShot(kind) {
   if (!orig) {
     try { orig = await (await fetch(s.url)).blob(); } catch { toast('โหลดรูปเพื่อไฮไลต์ไม่ได้'); return; }
   }
-  const out = await openAnnot(orig, shapes || [], SHOT_LABEL[kind]);
+  const out = await openAnnot(orig, shapes || [], SHOT_LABEL[kind], mode);
   if (!out) return;
   state.editing.shots[kind] = { ...s, orig: out.base, blob: out.blob, shapes: out.shapes, url: URL.createObjectURL(out.blob), dirty: true };
   renderShots();
@@ -1112,8 +1116,9 @@ const CIRCLE_SIZES = { s: 0.035, m: 0.06, l: 0.1 };   // radius as a share of th
 const LINE_WIDTHS = { thin: 0.6, mid: 1, thick: 1.8 };
 const annot = {
   img: null, baseBlob: null, shapes: [], history: [], crop: null, cur: null, before: null, resolve: null,
-  tool: 'circle', color: '#ff4655', size: 'm', width: 'mid', dash: false,
+  tool: 'circle', color: '#ff4655', size: 'm', width: 'mid', dash: false, aspect: '16:9',
 };
+const ASPECTS = { free: 0, '16:9': 16 / 9, '4:3': 4 / 3, '1:1': 1 };
 const imgW = (i) => i.naturalWidth || i.width;
 const imgH = (i) => i.naturalHeight || i.height;
 const copyShapes = (x) => JSON.parse(JSON.stringify(x));
@@ -1125,12 +1130,13 @@ function sizeAnnotCanvas() {
   c.height = Math.round(imgH(annot.img) * k);
 }
 
-async function openAnnot(blob, shapes, label) {
+async function openAnnot(blob, shapes, label, mode) {
   annot.img = await loadImg(blob);
   annot.baseBlob = blob;
   annot.shapes = copyShapes(shapes);
   annot.history = [];
   annot.crop = null;
+  annot.tool = mode === 'crop' ? 'crop' : (annot.tool === 'crop' ? 'circle' : annot.tool);
   sizeAnnotCanvas();
   $('#annot').setAttribute('aria-label', 'ไฮไลต์รูป' + label);
   syncAnnotBar();
@@ -1198,19 +1204,35 @@ function syncAnnotBar() {
   for (const b of bar.querySelectorAll('[data-color]')) b.classList.toggle('on', b.dataset.color === annot.color);
   for (const b of bar.querySelectorAll('[data-size]')) b.classList.toggle('on', b.dataset.size === annot.size);
   for (const b of bar.querySelectorAll('[data-width]')) b.classList.toggle('on', b.dataset.width === annot.width);
+  for (const b of bar.querySelectorAll('[data-aspect]')) b.classList.toggle('on', b.dataset.aspect === annot.aspect);
+  bar.querySelector('.annot-aspect').hidden = annot.tool !== 'crop';
   bar.querySelector('[data-annot=dash]').classList.toggle('on', annot.dash);
   bar.querySelector('.annot-sizes').hidden = annot.tool !== 'circle';
   const cropping = annot.tool === 'crop';
   for (const g of bar.querySelectorAll('.annot-style')) g.hidden = cropping;
   $('#annotCanvas').style.cursor = 'crosshair';
   $('#annot .annot-hint').textContent = cropping
-    ? 'ลากกรอบส่วนที่ต้องการ แล้วกด ✓ ใช้ครอป'
+    ? 'ลากกรอบส่วนที่ต้องการ แล้วกด ✓ ใช้ครอป · ไม่ครอปกด ยกเลิก'
     : annot.tool === 'circle' ? 'แตะ = วงกลมขนาดที่เลือก · ลาก = กำหนดขนาดเอง' : '';
 }
 
 function pushHistory() {
   annot.history.push({ img: annot.img, baseBlob: annot.baseBlob, shapes: copyShapes(annot.shapes) });
   if (annot.history.length > 50) annot.history.shift();
+}
+
+/** Crop box from a drag, locked to the chosen aspect ratio (in picture pixels), kept inside the picture. */
+function cropBox(x1, y1, x2, y2) {
+  const ratio = ASPECTS[annot.aspect];
+  let w = Math.abs(x2 - x1), h = Math.abs(y2 - y1);
+  if (ratio) {
+    const k = imgW(annot.img) / imgH(annot.img) / ratio; // normalised height per unit of normalised width
+    if (h < w * k) h = w * k; else w = h / k;
+    const maxW = x2 >= x1 ? 1 - x1 : x1, maxH = y2 >= y1 ? 1 - y1 : y1;
+    const f = Math.min(1, maxW / w, maxH / h);
+    w *= f; h *= f;
+  }
+  return { x: x2 >= x1 ? x1 : x1 - w, y: y2 >= y1 ? y1 : y1 - h, w, h };
 }
 
 function applyCrop() {
@@ -1282,7 +1304,7 @@ function bindAnnot() {
     const cur = annot.cur;
     if (!cur) return;
     const [x, y] = pt(e);
-    if (cur.crop) annot.crop = { x: Math.min(cur.x1, x), y: Math.min(cur.y1, y), w: Math.abs(x - cur.x1), h: Math.abs(y - cur.y1) };
+    if (cur.crop) annot.crop = cropBox(cur.x1, cur.y1, x, y);
     else if (cur.type === 'pen') cur.pts.push([x, y]);
     else { cur.x2 = x; cur.y2 = y; }
     drawAnnot();
@@ -1311,6 +1333,7 @@ function bindAnnot() {
     if (d.color) annot.color = d.color;
     if (d.size) annot.size = d.size;
     if (d.width) annot.width = d.width;
+    if (d.aspect) { annot.aspect = d.aspect; annot.crop = null; }
     if (d.annot === 'dash') annot.dash = !annot.dash;
     if (d.annot === 'undo') {
       if (annot.crop) annot.crop = null;
@@ -1819,7 +1842,17 @@ function placeMapChips() {
   else { document.body.prepend(top); $('main.layout').before(maps); }
 }
 
+/** Real visible height (some phones report 100dvh wrong in landscape / standalone mode). */
+function syncAppHeight() {
+  const h = Math.round(window.visualViewport?.height || window.innerHeight);
+  document.documentElement.style.setProperty('--app-h', h + 'px');
+}
+
 async function init() {
+  syncAppHeight();
+  window.addEventListener('resize', syncAppHeight);
+  window.addEventListener('orientationchange', () => setTimeout(syncAppHeight, 300));
+  window.visualViewport?.addEventListener('resize', syncAppHeight);
   for (const n of document.querySelectorAll('[data-version]')) n.textContent = 'v' + APP_VERSION;
   bindUi();
   placeMapChips();
