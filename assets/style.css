@@ -310,13 +310,26 @@ dialog.sheet::backdrop { background: #05070acc; }
 /* ---------- detail: stand / aim pair ---------- */
 dialog.sheet.detail { width: min(1100px, calc(100% - 32px)); }
 .zoomable { display: block; width: 100%; padding: 0; border: 0; background: none; cursor: zoom-in; }
-.pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; flex: 0 0 auto; }
-.pair-fig { margin: 0; position: relative; min-width: 0; }
-.pair-fig img, .pair-empty {
-  display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover;
-  border-radius: 10px; background: #000; border: 1px solid var(--line);
-}
-.pair-empty { display: grid; place-items: center; color: var(--muted); font-size: 14px; border-style: dashed; background: var(--panel2); }
+.pair-fig { margin: 0; position: relative; min-width: 0; width: 100%; height: 100%; }
+.pair-fig .zoomable { width: 100%; height: 100%; }
+.pair-fig img, .pair-empty { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; border: 0; }
+.pair-empty { display: grid; place-items: center; color: var(--muted); font-size: 14px; background: var(--panel2); }
+
+/* picture board: two columns, each 1–2 slots, draggable dividers */
+.board { position: relative; display: flex; width: 100%; aspect-ratio: 2.4 / 1; flex: 0 0 auto; background: #000; border-radius: 10px; overflow: hidden; }
+.bcol { display: flex; flex-direction: column; flex: 1 1 0; min-width: 0; }
+.bcell { position: relative; display: flex; flex: 1 1 0; min-height: 0; }
+.bcell > * { flex: 1 1 auto; min-width: 0; min-height: 0; }
+.vdiv, .hdiv { position: relative; z-index: 3; flex: 0 0 6px; background: var(--panel); touch-action: none; }
+.vdiv { cursor: col-resize; }
+.hdiv { cursor: row-resize; }
+.vdiv::before, .hdiv::before { content: ""; position: absolute; } /* bigger grab area */
+.vdiv::before { inset: 0 -10px; }
+.hdiv::before { inset: -10px 0; }
+.vdiv::after, .hdiv::after { content: ""; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); border-radius: 4px; background: #ffffff80; }
+.vdiv::after { width: 4px; height: 40px; }
+.hdiv::after { width: 40px; height: 4px; }
+.vdiv.dragging::after, .hdiv.dragging::after, .vdiv:hover::after, .hdiv:hover::after { background: var(--accent); }
 .pair-fig figcaption {
   position: absolute; left: 8px; top: 8px; font-size: 13px; font-weight: 600;
   padding: 2px 10px; border-radius: 999px; background: #000c; color: #fff; pointer-events: none;
@@ -412,7 +425,8 @@ dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
   dialog.sheet.detail .head-ic { width: 32px; height: 32px; padding: 3px; }
   dialog.sheet.detail .sheet-body { padding: 0 6px 16px; gap: 14px; }
   dialog.sheet.detail .sheet-body { padding: 0 0 16px; }
-  .pair { position: relative; gap: 2px; height: var(--app-h); padding: 0; margin: 0; }
+  .pair { position: relative; height: var(--app-h); aspect-ratio: auto; border-radius: 0; padding: 0; margin: 0; }
+  .pair .vdiv, .pair .hdiv { flex-basis: 3px; background: #0b0e13; }
   .pair-fig { height: 100%; }
   .pair-fig .zoomable { height: 100%; }
   /* fill each half (crops the left/right edges a little); ⤢ switches to "fit" to see the whole picture */
@@ -456,8 +470,10 @@ dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
 .auto-hint { font-size: 12px; color: var(--accent); }
 
 /* ---------- editor: stand / aim images ---------- */
-.shots { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
-.shot { position: relative; aspect-ratio: 16 / 9; border-radius: 10px; border: 1px dashed var(--line2); background: var(--panel2); overflow: hidden; }
+.edit-board .board { aspect-ratio: 2.2 / 1; min-height: 180px; }
+.shot { position: relative; width: 100%; height: 100%; border: 1px dashed var(--line2); background: var(--panel2); overflow: hidden; }
+.add-slot { position: absolute; left: 50%; bottom: 6px; transform: translateX(-50%); z-index: 2; border: 1px dashed #fff8; border-radius: 999px; background: #000b; color: #fff; font-size: 12px; padding: 3px 12px; cursor: pointer; white-space: nowrap; }
+.shot .throw-badge { bottom: 30px; }
 .shot.has { border-style: solid; background: #000; }
 .shot.active { outline: 2px solid var(--accent); outline-offset: 1px; }
 .shot.drop { outline: 2px dashed var(--accent); background: color-mix(in srgb, var(--accent) 12%, var(--panel2)); }
@@ -472,7 +488,7 @@ dialog.zoom.zoomed .zoom-stage:active { cursor: grabbing; }
 .shot .throw-badge { font-size: 12px; bottom: 6px; padding: 2px 8px; border-width: 1px; }
 @media (max-width: 560px) {
   .grid3 { grid-template-columns: 1fr 1fr; }
-  .shots { grid-template-columns: 1fr; }
+  .edit-board .board { aspect-ratio: 1.3 / 1; }
 }
 
 /* ---------- throw label on the aim image ---------- */
