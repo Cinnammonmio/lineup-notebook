@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.15.0';
+const APP_VERSION = '1.17.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -41,7 +41,7 @@ const TYPES = [
 const TYPE_LABEL = Object.fromEntries(TYPES);
 const SIDE_LABEL = { attack: 'บุก', defense: 'รับ' };
 const SITES = ['A', 'B', 'C', 'Mid'];
-const FIELDS = ['id', 'kind', 'title', 'map', 'agent', 'ability', 'side', 'site', 'type', 'from', 'to', 'steps', 'throw', 'media', 'layout', 'items', 'smokes', 'tags', 'example'];
+const FIELDS = ['id', 'kind', 'title', 'map', 'agent', 'ability', 'side', 'site', 'type', 'from', 'to', 'steps', 'throw', 'media', 'layout', 'items', 'smokes', 'tags', 'by', 'example'];
 
 /* ---------- helpers ---------- */
 
@@ -835,7 +835,8 @@ function lineupCard(l, num) {
       el('span', { class: 'card-meta' },
         l.side ? el('i', { class: 'side-dot ' + l.side, title: SIDE_LABEL[l.side] }) : null,
         [l.ability || l.agent, l.site && 'ไซต์ ' + l.site, TYPE_LABEL[l.type]].filter(Boolean).join(' · ') || '—'),
-      l.example || l._local ? el('span', { class: 'chips' },
+      l.example || l._local || l.by ? el('span', { class: 'chips' },
+        l.by ? el('span', { class: 'chip by', text: 'โดย ' + l.by }) : null,
         l.example ? el('span', { class: 'chip ex', text: 'ตัวอย่าง' }) : null,
         l._local ? el('span', { class: 'chip warn', text: 'ยังไม่ export' }) : null) : null)),
     el('button', { type: 'button', class: 'view-btn', title: 'ดู lineup', 'aria-label': 'ดู ' + (l.title || 'lineup'), onclick: () => openDetail(l.id) }, 'ดู ›'));
@@ -1811,7 +1812,7 @@ function openEditor(src) {
   renderPickers();
   updateTitle();
   renderShots();
-  $('#btnDelete').hidden = !exists;
+  $('#btnDelete').hidden = !exists || (!ghReady() && state.base.some((b) => b.id === d.id));
   $('#mobileWarn').hidden = !isMobile() || ghReady();
 
   const dlg = $('#editor');
@@ -2257,6 +2258,7 @@ const gh = {
   cfg: { repo: defaultRepo(), branch: 'main', token: '', auto: true, ...store.get(LS.gh, {}) },
   busy: false,
   again: false,
+  extraFiles: {}, // other repo files to publish with the next commit (e.g. data/inbox.json)
 };
 const ghReady = () => !!gh.cfg.token && /^[\w.-]+\/[\w.-]+$/.test(gh.cfg.repo);
 
@@ -2323,6 +2325,8 @@ async function publishOnce() {
 
   const items = mergeLocal(remote);
   const tree = [{ path: 'data/lineups.json', mode: '100644', type: 'blob', content: JSON.stringify(items, null, 2) + '\n' }];
+  const extra = { ...gh.extraFiles };
+  for (const [path, content] of Object.entries(extra)) tree.push({ path, mode: '100644', type: 'blob', content });
   const paths = [...new Set(items.flatMap(mediaPaths))].filter((x) => localUrls.has(x));
   for (const path of paths) {
     const rec = await mediaDb.get(path).catch(() => null);
@@ -2341,8 +2345,10 @@ async function publishOnce() {
   const nameOf = (id, o) => o.title || remote.find((r) => r?.id === id)?.title || state.base.find((x) => x.id === id)?.title || id;
   const titles = changes.map(([id, o]) => (o._deleted ? 'ลบ ' : '') + nameOf(id, o)).slice(0, 5).join(', ');
   const newTree = await ghApi('/git/trees', { method: 'POST', body: { base_tree: commit.tree.sha, tree } });
-  const newCommit = await ghApi('/git/commits', { method: 'POST', body: { message: `Update lineups from ARC: ${titles || 'sync'}`, tree: newTree.sha, parents: [head] } });
+  const msg = titles ? `Update lineups from ARC: ${titles}` : Object.keys(extra).length ? 'Update ARC settings' : 'Update lineups from ARC: sync';
+  const newCommit = await ghApi('/git/commits', { method: 'POST', body: { message: msg, tree: newTree.sha, parents: [head] } });
   await ghApi(`/git/refs/heads/${branch}`, { method: 'PATCH', body: { sha: newCommit.sha } });
+  for (const k of Object.keys(extra)) delete gh.extraFiles[k];
 
   // remember what was pushed; local copies stay until the deployed site has them (pruneLocal)
   const pushed = store.get(LS.pushed, {});
@@ -2354,7 +2360,7 @@ async function publishOnce() {
 async function publish({ quiet } = {}) {
   if (!ghReady()) { openGhDialog(); return; }
   if (gh.busy) { gh.again = true; return; }
-  if (!unpublished().length) { if (!quiet) toast('ไม่มีอะไรต้องขึ้น GitHub'); return; }
+  if (!unpublished().length && !Object.keys(gh.extraFiles).length) { if (!quiet) toast('ไม่มีอะไรต้องขึ้น GitHub'); return; }
   gh.busy = true;
   renderUnsynced();
   try {
@@ -2415,6 +2421,229 @@ function bindGh() {
     toast(ghReady() ? 'บันทึกการตั้งค่า GitHub แล้ว' : 'ยังไม่ได้ใส่ token');
     if (ghReady() && unpublished().length) publish();
   });
+}
+
+/* ---------- friends: send lineups to the owner, who reviews and publishes them ---------- */
+
+const blobToDataUrl = (blob) => new Promise((res, rej) => { const fr = new FileReader(); fr.onload = () => res(fr.result); fr.onerror = () => rej(fr.error); fr.readAsDataURL(blob); });
+const dataUrlToBlob = async (u) => (await fetch(u)).blob();
+
+/** Friend: pack this device's new / edited lineups (with their pictures) into one file and share it. */
+async function submitToOwner() {
+  const sent = store.get('lp.submitted', {});
+  const all_ = Object.values(state.local).filter((x) => !x._deleted && !isPlan(x)).map(clean);
+  const items = inbox.cfg ? all_.filter((x) => sent[x.id] !== stable(x)) : all_;
+  if (!items.length) { toast(all_.length ? 'ส่งครบแล้ว — แก้หรือเพิ่ม lineup ใหม่แล้วค่อยส่งอีกครั้ง' : 'ยังไม่มี lineup ที่เพิ่ม / แก้ในเครื่องนี้'); return; }
+  let name = store.get('lp.myName', '');
+  if (!name) {
+    name = (prompt('ชื่อของคุณ (จะขึ้นเป็น "โดย …" บน lineup)') || '').trim().slice(0, 30);
+    if (!name) return;
+    store.set('lp.myName', name);
+  }
+  const images = {};
+  for (const path of new Set(items.flatMap(mediaPaths))) {
+    if (!localUrls.has(path)) continue;
+    const rec = await mediaDb.get(path).catch(() => null);
+    if (rec?.blob) images[path] = await blobToDataUrl(rec.blob);
+  }
+  const pack = { type: 'arc-lineups', version: APP_VERSION, from: name, created: new Date().toISOString(), lineups: items, images };
+  if (inbox.cfg) {
+    toast('กำลังส่ง…');
+    try {
+      await inboxSend(name, pack);
+      for (const x of items) sent[x.id] = stable(x);
+      store.set('lp.submitted', sent);
+      toast(`ส่ง ${items.length} lineup แล้ว — รอเจ้าของตรวจและเพิ่มเข้าสมุด`);
+      return;
+    } catch (e) { toast('ส่งเข้ากล่องรับไม่ได้ (' + e.message + ') — จะใช้วิธีส่งไฟล์แทน'); }
+  }
+  const date = new Date().toISOString().slice(0, 10);
+  const file = new File([JSON.stringify(pack)], `arc-${slug(name)}-${date}.json`, { type: 'application/json' });
+  try {
+    if (navigator.canShare?.({ files: [file] })) { await navigator.share({ files: [file], title: `lineup จาก ${name}` }); toast('ส่งแล้ว — รอเจ้าของรับเข้าสมุด'); return; }
+  } catch (e) { if (e?.name === 'AbortError') return; }
+  download(file, file.name);
+  toast(`ได้ไฟล์ ${file.name} — ส่งให้เจ้าของทาง LINE / Discord`);
+}
+
+/** Owner: open a friend's file and review it before adding. */
+async function receiveFromFriend(file) {
+  let pack;
+  try { pack = JSON.parse(await file.text()); } catch { toast('ไฟล์ไม่ถูกต้อง'); return; }
+  if (pack?.type !== 'arc-lineups' || !Array.isArray(pack.lineups)) { toast('ไม่ใช่ไฟล์ lineup จากเพื่อน'); return; }
+  const items = pack.lineups.filter((x) => x && typeof x === 'object' && !isPlan(x) && x.map);
+  if (!items.length) { toast('ไฟล์นี้ไม่มี lineup'); return; }
+  state.review = { pack, items, picked: new Set(items.map((_, i) => i)) };
+  $('#reviewTitle').textContent = `lineup จาก ${pack.from || 'เพื่อน'}`;
+  $('#reviewInfo').textContent = `${items.length} lineup · ติ๊กอันที่จะเพิ่มเข้าสมุด (ของเดิมจะไม่ถูกทับหรือลบ)`;
+  renderReview();
+  $('#reviewDialog').showModal();
+}
+
+function renderReview() {
+  const rv = state.review;
+  $('#reviewList').replaceChildren(...rv.items.map((l, i) => {
+    const { stand, aim } = splitMedia((l.media || []).map(parseMedia).filter(Boolean));
+    const thumb = (m) => (m && rv.pack.images?.[m.src] ? el('img', { src: rv.pack.images[m.src], alt: '' }) : el('span', { class: 'rv-none' }));
+    const a = agentOf(l.agent);
+    const on = rv.picked.has(i);
+    return el('li', { class: 'rv-item' + (on ? ' on' : ''), onclick: () => { if (on) rv.picked.delete(i); else rv.picked.add(i); renderReview(); } },
+      el('span', { class: 'rv-check', text: on ? '✓' : '' }),
+      a?.icon ? el('img', { class: 'rv-face', src: a.icon, alt: l.agent }) : null,
+      el('span', { class: 'rv-body' },
+        el('b', { text: l.title || '(ไม่มีชื่อ)' }),
+        el('small', { text: [l._from && 'จาก ' + l._from, l.map, l.agent, l.ability, l.site && 'ไซต์ ' + l.site].filter(Boolean).join(' · ') })),
+      el('span', { class: 'rv-thumbs' }, thumb(stand), thumb(aim)));
+  }));
+  $('#reviewAccept').textContent = `เพิ่มที่เลือก (${rv.picked.size})`;
+  $('#reviewAccept').disabled = !rv.picked.size;
+}
+
+async function acceptReview() {
+  const rv = state.review;
+  let n = 0;
+  for (const i of rv.picked) {
+    const src = rv.items[i];
+    const from = String(src._from || rv.pack.from || 'เพื่อน').slice(0, 30);
+    const d = { ...src, id: newId(), by: src.by || from }; // always a new lineup: never overwrites the owner's
+    delete d._from;
+    delete d._local; delete d._deleted;
+    const split = splitMedia((d.media || []).map(parseMedia).filter(Boolean));
+    const kindOf = new Map(SHOT_KINDS.filter((k) => split[k]).map((k) => [split[k].src, k]));
+    const media = [];
+    for (const m of (d.media || []).map(parseMedia).filter(Boolean)) {
+      const data = rv.pack.images?.[m.src];
+      if (data) {
+        const blob = await dataUrlToBlob(data);
+        const path = shotPath(d, kindOf.get(m.src) || 'extra', blob);
+        await putLocalMedia(path, { blob, orig: blob, shapes: [] });
+        media.push({ src: path, caption: m.caption });
+      } else if (!/^media\//.test(m.src)) media.push(m); // links (e.g. YouTube) carry over; missing files don't
+    }
+    d.media = media;
+    saveLineup(d);
+    n++;
+  }
+  $('#reviewDialog').close();
+  if (rv.inboxIds?.length) await inboxDelete(rv.inboxIds).catch((e) => toast('ลบออกจากกล่องรับไม่ได้: ' + e.message));
+  state.review = null;
+  render();
+  inboxRefresh();
+  toast(ghReady() && gh.cfg.auto ? `เพิ่ม ${n} lineup แล้ว — กำลังขึ้น GitHub…` : `เพิ่ม ${n} lineup ในเครื่องแล้ว`);
+  if (ghReady() && gh.cfg.auto) publish({ quiet: true });
+}
+
+/* ---------- inbox (Supabase): friends send from the website, only the owner can read ---------- */
+
+const inbox = { cfg: null, count: 0 };
+const inboxPass = () => store.get('lp.inboxPass', '');
+
+async function inboxLoad() {
+  try {
+    const r = await fetch('data/inbox.json', { cache: 'no-cache' });
+    const j = r.ok ? await r.json() : null;
+    inbox.cfg = j?.url && j?.anonKey ? { url: j.url.replace(/\/+$/, ''), anonKey: j.anonKey } : null;
+  } catch { inbox.cfg = null; }
+  inboxRefresh();
+}
+
+async function inboxCall(path, body, prefer) {
+  const c = inbox.cfg;
+  if (!c) throw new Error('ยังไม่ได้ตั้งกล่องรับ');
+  const r = await fetch(`${c.url}/rest/v1/${path}`, {
+    method: 'POST', cache: 'no-store',
+    headers: { apikey: c.anonKey, Authorization: 'Bearer ' + c.anonKey, 'Content-Type': 'application/json', ...(prefer ? { Prefer: prefer } : {}) },
+    body: JSON.stringify(body),
+  });
+  if (!r.ok) {
+    const t = await r.text().catch(() => '');
+    throw new Error(/passphrase/i.test(t) ? 'รหัสผ่านเจ้าของไม่ถูกต้อง' : r.status === 413 ? 'ไฟล์ใหญ่เกินไป' : `ข้อผิดพลาด ${r.status}`);
+  }
+  const text = await r.text(); // inserts with return=minimal answer 201 with an empty body
+  return text ? JSON.parse(text) : null;
+}
+const inboxSend = (sender, payload) => inboxCall('arc_inbox', { sender, payload }, 'return=minimal');
+const inboxDelete = (ids) => inboxCall('rpc/arc_inbox_delete', { pass: inboxPass(), ids });
+
+/** Owner: number of submissions waiting (shown as a badge). */
+async function inboxRefresh() {
+  const b = $('#inboxBadge');
+  if (!inbox.cfg || !inboxPass()) { b.hidden = true; return; }
+  try {
+    inbox.count = await inboxCall('rpc/arc_inbox_count', { pass: inboxPass() });
+    b.hidden = !inbox.count;
+    b.textContent = `📥 รอตรวจ ${inbox.count}`;
+  } catch { b.hidden = true; }
+}
+
+async function inboxOpen() {
+  if (!inbox.cfg) { toast('ยังไม่ได้ตั้งกล่องรับ — ⋯ → ตั้งค่ากล่องรับ'); return; }
+  if (!inboxPass()) { openInboxDialog(); return; }
+  toast('กำลังโหลด…');
+  let rows;
+  try { rows = await inboxCall('rpc/arc_inbox_list', { pass: inboxPass() }); } catch (e) { toast(e.message); return; }
+  const items = [], images = {};
+  for (const row of rows || []) {
+    const p = row.payload || {};
+    Object.assign(images, p.images || {});
+    for (const l of p.lineups || []) if (l && typeof l === 'object' && !isPlan(l) && l.map) items.push({ ...l, _from: row.sender || p.from });
+  }
+  if (!items.length) { toast('กล่องรับว่าง'); if (rows?.length) inboxDelete(rows.map((x) => x.id)).then(inboxRefresh); return; }
+  state.review = { pack: { images }, items, picked: new Set(items.map((_, i) => i)), inboxIds: rows.map((x) => x.id) };
+  $('#reviewTitle').textContent = 'lineup จากเพื่อน (กล่องรับ)';
+  $('#reviewInfo').textContent = `${items.length} lineup จาก ${rows.length} ครั้งที่ส่ง · ติ๊กอันที่จะเพิ่ม — อันที่ไม่ติ๊กจะถูกทิ้งจากกล่องรับ (ของเดิมในสมุดไม่ถูกทับหรือลบ)`;
+  renderReview();
+  $('#reviewDialog').showModal();
+}
+
+function openInboxDialog() {
+  const f = $('#inboxForm').elements;
+  f.url.value = inbox.cfg?.url || '';
+  f.anonKey.value = inbox.cfg?.anonKey || '';
+  f.pass.value = inboxPass();
+  $('#inboxStatus').textContent = inbox.cfg ? 'เปิดใช้กล่องรับแล้ว' : 'ยังไม่ได้ตั้ง — ดูวิธีใน docs/inbox-setup.md';
+  $('#inboxDialog').showModal();
+}
+
+function bindInbox() {
+  const dlg = $('#inboxDialog');
+  const f = $('#inboxForm').elements;
+  for (const b of dlg.querySelectorAll('[data-close]')) b.addEventListener('click', () => dlg.close());
+  $('#inboxBadge').addEventListener('click', inboxOpen);
+  $('#inboxTest').addEventListener('click', async () => {
+    const prev = inbox.cfg;
+    inbox.cfg = { url: f.url.value.trim().replace(/\/+$/, ''), anonKey: f.anonKey.value.trim() };
+    const pass = inboxPass(); store.set('lp.inboxPass', f.pass.value);
+    $('#inboxStatus').textContent = 'กำลังทดสอบ…';
+    try { const n = await inboxCall('rpc/arc_inbox_count', { pass: f.pass.value }); $('#inboxStatus').textContent = `✓ เชื่อมต่อได้ · รอตรวจ ${n}`; }
+    catch (e) { $('#inboxStatus').textContent = '✕ ' + e.message; }
+    inbox.cfg = prev; store.set('lp.inboxPass', pass);
+  });
+  $('#inboxForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const url = f.url.value.trim().replace(/\/+$/, ''), anonKey = f.anonKey.value.trim();
+    store.set('lp.inboxPass', f.pass.value);
+    const changed = url !== (inbox.cfg?.url || '') || anonKey !== (inbox.cfg?.anonKey || '');
+    inbox.cfg = url && anonKey ? { url, anonKey } : null;
+    dlg.close();
+    if (changed) {
+      // friends' browsers read the inbox address from the repo
+      gh.extraFiles['data/inbox.json'] = JSON.stringify(inbox.cfg || {}, null, 2) + '\n';
+      if (ghReady()) { publish({ quiet: true }); toast('บันทึกแล้ว — กำลังขึ้น GitHub ให้เพื่อนใช้ได้'); }
+      else toast('บันทึกแล้ว — ตั้งค่า GitHub ก่อน เพื่อให้เพื่อนใช้กล่องรับได้');
+    } else toast('บันทึกแล้ว');
+    inboxRefresh();
+  });
+  setInterval(() => { if (document.visibilityState === 'visible') inboxRefresh(); }, 3 * 60 * 1000);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') inboxRefresh(); });
+}
+
+function bindFriends() {
+  const dlg = $('#reviewDialog');
+  for (const b of dlg.querySelectorAll('[data-close]')) b.addEventListener('click', () => dlg.close());
+  $('#reviewAll').addEventListener('click', () => { state.review.picked = new Set(state.review.items.map((_, i) => i)); renderReview(); });
+  $('#reviewAccept').addEventListener('click', acceptReview);
+  $('#receiveFile').addEventListener('change', (e) => { const f = e.target.files?.[0]; if (f) receiveFromFriend(f); e.target.value = ''; });
 }
 
 /* ---------- import / export ---------- */
@@ -2513,6 +2742,8 @@ function bindUi() {
   });
   bindGh();
   bindPlans();
+  bindFriends();
+  bindInbox();
   $('#mapWrap').addEventListener('click', onMapClick);
   $('#peek').addEventListener('click', (e) => e.stopPropagation()); // clicks inside the preview don't reach the map
   $('#spike').addEventListener('click', (e) => e.stopPropagation());
@@ -2539,6 +2770,10 @@ function bindUi() {
     if (act === 'update') manualUpdate();
     if (act === 'publish') publish();
     if (act === 'import') $('#importFile').click();
+    if (act === 'submit') submitToOwner();
+    if (act === 'receive') { if (inbox.cfg && inboxPass()) inboxOpen(); else $('#receiveFile').click(); }
+    if (act === 'receiveFile') $('#receiveFile').click();
+    if (act === 'inbox') openInboxDialog();
     if (act === 'refresh') { store.del(LS.maps); store.del(LS.agents); location.reload(); }
     if (act === 'reset') {
       const n = Object.keys(state.local).length;
@@ -2746,6 +2981,7 @@ async function init() {
     }).catch((e) => console.warn('SW', e));
   }
   watchData();
+  inboxLoad();
 }
 
 /** The version currently published (from sw.js, fetched past every cache). */
