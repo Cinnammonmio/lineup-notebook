@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.12.0';
+const APP_VERSION = '1.12.1';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -2492,8 +2492,9 @@ function placeMapChips() {
 
 /** Real visible height (some phones report 100dvh wrong in landscape / standalone mode). */
 function syncAppHeight() {
-  const h = Math.round(window.visualViewport?.height || window.innerHeight);
-  document.documentElement.style.setProperty('--app-h', h + 'px');
+  // the layout viewport: unlike visualViewport it doesn't shrink when the page was pinch-zoomed
+  const h = Math.round(Math.max(window.innerHeight, document.documentElement.clientHeight || 0));
+  if (h > 0) document.documentElement.style.setProperty('--app-h', h + 'px');
 }
 
 async function init() {
@@ -2501,6 +2502,10 @@ async function init() {
   window.addEventListener('resize', syncAppHeight);
   window.addEventListener('orientationchange', () => setTimeout(syncAppHeight, 300));
   window.visualViewport?.addEventListener('resize', syncAppHeight);
+  // phones report the final height late (toolbar animating, app coming back from the background)
+  window.addEventListener('pageshow', syncAppHeight);
+  document.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') [0, 300, 1000].forEach((t) => setTimeout(syncAppHeight, t)); });
+  [300, 1000, 2500].forEach((t) => setTimeout(syncAppHeight, t));
   for (const n of document.querySelectorAll('[data-version]')) n.textContent = 'v' + APP_VERSION;
   bindUi();
   placeMapChips();
