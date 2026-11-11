@@ -423,5 +423,42 @@
         "caption": "จุดเล็ง 2"
       }
     ]
+  },
+  {
+    "id": "mwc6nwhrjp9d",
+    "title": "Nanoswarm C · Retake",
+    "map": "Haven",
+    "agent": "Killjoy",
+    "ability": "Nanoswarm",
+    "side": "defense",
+    "site": "C",
+    "type": "retake",
+    "from": {
+      "x": 0.215,
+      "y": 0.583
+    },
+    "to": {
+      "x": 0.338,
+      "y": 0.879
+    },
+    "throw": "กระโดดแล้วปา",
+    "media": [
+      {
+        "src": "media/haven/killjoy-c-nanoswarm-mwc6nwhrjp9d-stand-vmwc6nwhr.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/haven/killjoy-c-nanoswarm-mwc6nwhrjp9d-stand2-vmwc6nwhw.webp",
+        "caption": "จุดยืน 2"
+      },
+      {
+        "src": "media/haven/killjoy-c-nanoswarm-mwc6nwhrjp9d-aim-vmwc6nwi3.webp",
+        "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/haven/killjoy-c-nanoswarm-mwc6nwhrjp9d-aim2-vmwc6nwi8.webp",
+        "caption": "จุดเล็ง 2"
+      }
+    ]
   }
 ]
