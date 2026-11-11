@@ -493,5 +493,34 @@
         "caption": "จุดเล็ง 2"
       }
     ]
+  },
+  {
+    "id": "mwc7cso344jo",
+    "title": "Nanoswarm A · Hold",
+    "map": "Haven",
+    "agent": "Killjoy",
+    "ability": "Nanoswarm",
+    "side": "defense",
+    "site": "A",
+    "type": "hold",
+    "from": {
+      "x": 0.368,
+      "y": 0.352
+    },
+    "to": {
+      "x": 0.397,
+      "y": 0.17
+    },
+    "throw": "กระโดดแล้วปา",
+    "media": [
+      {
+        "src": "media/haven/killjoy-a-nanoswarm-mwc7cso344jo-stand-vmwc7cso3.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/haven/killjoy-a-nanoswarm-mwc7cso344jo-aim-vmwc7csod.webp",
+        "caption": "จุดเล็ง"
+      }
+    ]
   }
 ]
