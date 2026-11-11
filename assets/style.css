@@ -618,8 +618,10 @@ dialog.annot::backdrop { background: #000; }
 .plan-ic .abil { position: absolute; right: -6px; bottom: -6px; width: 18px; height: 18px; padding: 2px; border-radius: 6px; background: #0b0e13; border: 1px solid var(--ag, var(--line)); object-fit: contain; }
 .plan-ic.smoke .face { border-radius: 50%; }
 .plan-icons { gap: 10px; padding: 2px 6px 6px 0; }
-/* plan cards: narrow tiles side by side instead of full-width rows */
-.list:has(> .plan-card) { grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 340px)); justify-content: start; }
+/* plan card: details on the same line, right of the name (lower card) */
+.plan-line { display: flex; align-items: baseline; gap: 10px; min-width: 0; }
+.plan-line .card-title { flex: 0 1 auto; }
+.plan-line .card-meta { flex: 0 1 auto; min-width: 0; }
 /* agent row filter */
 .role-filter { width: auto !important; min-height: 28px !important; padding: 2px 8px !important; font-size: 13px !important; border-radius: 999px !important; flex: 0 0 auto; }
 
