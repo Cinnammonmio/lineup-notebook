@@ -259,5 +259,37 @@
         "caption": "จุดเล็ง 2"
       }
     ]
+  },
+  {
+    "id": "mwc4ecjiglz2",
+    "title": "Mosh Pit B · Retake",
+    "map": "Summit",
+    "agent": "Gekko",
+    "ability": "Mosh Pit",
+    "side": "attack",
+    "site": "B",
+    "type": "retake",
+    "from": {
+      "x": 0.285,
+      "y": 0.584
+    },
+    "to": {
+      "x": 0.134,
+      "y": 0.337
+    },
+    "media": [
+      {
+        "src": "media/summit/gekko-b-mosh-pit-mwc4ecjiglz2-stand-vmwc4ecji.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/summit/gekko-b-mosh-pit-mwc4ecjiglz2-aim-vmwc4ecjn.webp",
+        "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/summit/gekko-b-mosh-pit-mwc4ecjiglz2-aim2-vmwc4ecjt.webp",
+        "caption": "จุดเล็ง 2"
+      }
+    ]
   }
 ]
