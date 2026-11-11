@@ -654,3 +654,21 @@ dialog.annot::backdrop { background: #000; }
 .view-btn:hover { background: color-mix(in srgb, var(--accent) 10%, transparent); }
 .card.sel { border-color: var(--ag, var(--accent)); box-shadow: 0 0 0 1px var(--ag, var(--accent)); background: color-mix(in srgb, var(--ag, var(--accent)) 8%, var(--panel)); }
 .map-noimg { pointer-events: none; } /* the "no minimap" placeholder must not block taps on pins */
+
+/* ---------- map zoom layer ---------- */
+.map-inner { position: absolute; inset: 0; transform-origin: 0 0; transition: transform .35s ease; }
+.map-inner #mapImg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+.map-inner .pin { transform: translate(-50%, -50%) scale(calc(1 / var(--z, 1))); }
+.map-inner .pin:hover, .map-inner .pin.hl, .map-inner .pin.sel { transform: translate(-50%, -50%) scale(calc(1.2 / var(--z, 1))); }
+.map-inner .site-lbl { transform: translate(-50%, -50%) scale(calc(1 / var(--z, 1))); }
+
+/* ---------- filter button + panel ---------- */
+.list-col { position: relative; }
+.filter-btn .n { margin-left: 6px; font-size: 11px; line-height: 16px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: var(--accent-ink); }
+.filter-btn.on { border-color: var(--accent); color: var(--accent); }
+.filter-pop {
+  position: absolute; z-index: 8; right: 0; margin-top: -2px; width: min(340px, 100%);
+  display: flex; flex-wrap: wrap; gap: 8px; padding: 10px; border-radius: 12px;
+  background: var(--panel); border: 1px solid var(--line2); box-shadow: 0 12px 30px #000b;
+}
+.filter-pop .fsel { flex: 1 1 140px; }

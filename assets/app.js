@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.12.2';
+const APP_VERSION = '1.13.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -465,7 +465,12 @@ function renderMap() {
   // hovering a plan card in the plan list previews that plan on the map
   const preview = state.tab === 'plans' && !state.plan && state.hoverPlan ? plans().find((x) => x.id === state.hoverPlan) : null;
   const plan = activePlan() || preview;
-  const pool = preview ? all().filter((l) => norm(l.map) === norm(state.map) && preview.items.includes(l.id)) : visible();
+  // plan tab with nothing opened: show what every plan on this map uses
+  const allPlans = state.tab === 'plans' && !plan ? plans().filter((x) => norm(x.map) === norm(state.map)) : null;
+  const onMap = (l) => norm(l.map) === norm(state.map);
+  const pool = preview ? all().filter((l) => onMap(l) && preview.items.includes(l.id))
+    : allPlans ? all().filter((l) => onMap(l) && allPlans.some((x) => (x.items || []).includes(l.id)))
+      : visible();
   const list = pool.filter((l) => l.from || l.to).sort((a, b) => (a.id === sel) - (b.id === sel));
   for (const l of list) {
     const cls = 'side-' + (l.side || 'none') + (sel && sel !== l.id ? ' dim' : '') + (sel === l.id ? ' sel' : '');
@@ -473,12 +478,43 @@ function renderMap() {
   }
 
   // smokes placed directly in a plan (no lineup needed)
-  const smokes = state.smokePick ? state.planEdit?.smokes || [] : plan?.smokes || [];
+  const smokes = state.smokePick ? state.planEdit?.smokes || [] : plan?.smokes || (allPlans || []).flatMap((x) => x.smokes || []);
   for (const sm of smokes) pins.prepend(smokeEl(sm));
 
   const p = state.pick;
   if (p?.draft?.from) svg.append(svgEl('circle', { cx: p.draft.from.x * 1000, cy: p.draft.from.y * 1000, r: 13, class: 'tmp' }));
   $('#mapWrap').classList.toggle('picking', !!p || !!state.smokePick);
+
+  // zoom the map to whatever is chosen: a highlighted lineup, or an opened / previewed plan
+  const focus = state.pick || state.smokePick ? null
+    : sel ? list.filter((l) => l.id === sel)
+      : plan ? list : null;
+  zoomMapTo(focus && [...focus.flatMap((l) => [l.from, l.to]).filter(Boolean), ...(focus === list ? smokes : [])]);
+}
+
+/** Fit the map view around these points (0–1 coords); nothing → whole map. Icons keep their size. */
+function zoomMapTo(points) {
+  const inner = $('#mapInner'), wrap = $('#mapWrap');
+  let z = 1, tx = 0, ty = 0;
+  if (points?.length) {
+    const xs = points.map((q) => q.x), ys = points.map((q) => q.y);
+    const pad = 0.1;
+    let x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad, y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad;
+    const span = Math.max(x1 - x0, y1 - y0, 0.34); // never closer than ~3×
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    z = Math.min(3, 1 / span);
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    tx = Math.min(0, Math.max(W - W * z, W / 2 - cx * W * z));
+    ty = Math.min(0, Math.max(H - H * z, H / 2 - cy * H * z));
+  }
+  inner.style.transform = z === 1 ? '' : `translate(${tx}px, ${ty}px) scale(${z})`;
+  inner.style.setProperty('--z', z);
+  // start dots are SVG circles inside the zoomed layer: keep their on-screen size
+  for (const c of $('#mapSvg').querySelectorAll('circle')) {
+    c.dataset.r ||= c.getAttribute('r');
+    c.setAttribute('r', (+c.dataset.r / z).toFixed(2));
+  }
+  wrap.classList.toggle('zoomed', z > 1);
 }
 
 /** Touch screens: a card tap shows the quick preview at the lineup's pin first; mouse: open it straight away. */
@@ -736,10 +772,11 @@ function saveFilters() {
   store.set(LS.role, state.f.role);
 }
 
-/** Filter row under the agent row: side, site, type and agent role. */
+const activeFilters = () => ['side', 'site', 'type', 'role'].filter((k) => state.f[k] !== 'all').length;
+
+/** One "กรอง" button (next to the agent buttons) opens this panel: side, site, type and agent role. */
 function renderFilterBar() {
-  const bar = $('#filterBar');
-  bar.hidden = state.tab === 'plans' || !!activePlan();
+  const bar = $('#filterPop');
   if (bar.hidden) return;
   const sel = (key, label, options) => el('select', {
     class: 'fsel' + (state.f[key] !== 'all' ? ' on' : ''), 'aria-label': label, title: label,
@@ -753,6 +790,13 @@ function renderFilterBar() {
     sel('role', 'บทบาทเอเจนต์', [['all', 'ทุกบทบาท'], ['has', 'มี lineup'], ['controller', 'Controller'], ['duelist', 'Duelist'], ['initiator', 'Initiator'], ['sentinel', 'Sentinel']]),
     ...(active ? [el('button', { type: 'button', class: 'reset-ag', onclick: () => { Object.assign(state.f, { side: 'all', site: 'all', type: 'all', role: 'all' }); saveFilters(); render(); } }, 'ล้าง')] : []));
 }
+function filterButton() {
+  const n = activeFilters();
+  return el('button', {
+    type: 'button', class: 'reset-ag filter-btn' + (n ? ' on' : ''), 'aria-expanded': String(!$('#filterPop').hidden),
+    onclick: (e) => { e.stopPropagation(); $('#filterPop').hidden = !$('#filterPop').hidden; renderFilterBar(); e.currentTarget.setAttribute('aria-expanded', String(!$('#filterPop').hidden)); },
+  }, '⚙ กรอง', n ? el('span', { class: 'n', text: String(n) }) : null);
+}
 
 function renderList() {
   const keepTop = $('#list').scrollTop; // re-rendering must not jump the list back to the top
@@ -761,6 +805,7 @@ function renderList() {
 }
 
 function renderListInner() {
+  if (state.tab === 'plans' || activePlan()) $('#filterPop').hidden = true;
   renderFilterBar();
   if (state.tab !== 'plans' || state.plan) state.hoverPlan = null;
   const ul = $('#list');
@@ -801,6 +846,7 @@ function renderListInner() {
   const withLineups = [...new Set(all().filter((l) => norm(l.map) === norm(state.map) && l.agent).map((l) => norm(l.agent)))];
   cnt.replaceChildren(
     el('span', { class: 'grow cnt-text', text: (picked.length ? (picked.length > 2 ? `${picked.length} เอเจนต์` : agentName) : 'ทุกเอเจนต์') + ` · ${list.length} lineup` }),
+    filterButton(),
     ...(picked.length
       ? [el('button', { type: 'button', class: 'reset-ag', onclick: () => setAgents([]) }, 'ดูทุกเอเจนต์')]
       : withLineups.length > 1
@@ -2059,7 +2105,7 @@ function cancelPick() {
 
 function onMapClick(e) {
   if (state.peek && !state.pick && !state.smokePick) { closePeek(); return; }
-  const r = e.currentTarget.getBoundingClientRect();
+  const r = $('#mapInner').getBoundingClientRect(); // the zoomed layer, so taps map to the right spot
   const pt = { x: round3((e.clientX - r.left) / r.width), y: round3((e.clientY - r.top) / r.height) };
   const sp = state.smokePick;
   if (sp) {
@@ -2352,6 +2398,9 @@ function bindUi() {
   bindPlans();
   $('#mapWrap').addEventListener('click', onMapClick);
   $('#peek').addEventListener('click', (e) => e.stopPropagation()); // clicks inside the preview don't reach the map
+  $('#filterPop').addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => { if (!$('#filterPop').hidden) { $('#filterPop').hidden = true; renderList(); } });
+  window.addEventListener('resize', () => renderMap());
 
   const menu = $('#menu');
   const menuBtn = $('#btnMenu');
