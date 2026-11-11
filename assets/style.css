@@ -1,3 +1,6 @@
+/* no double-tap page zoom anywhere (the picture viewer and drawing canvas set their own touch-action) */
+html, body, dialog { touch-action: manipulation; }
+
 :root {
   --app-h: 100dvh; /* set from JS to the real window height (dvh is unreliable on some phones) */
   --bg: #0f1218;
