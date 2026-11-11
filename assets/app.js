@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.12.1';
+const APP_VERSION = '1.12.2';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -2364,6 +2364,7 @@ function bindUi() {
     setMenu(false);
     if (act === 'export') exportJson();
     if (act === 'github') openGhDialog();
+    if (act === 'update') manualUpdate();
     if (act === 'publish') publish();
     if (act === 'import') $('#importFile').click();
     if (act === 'refresh') { store.del(LS.maps); store.del(LS.agents); location.reload(); }
@@ -2555,12 +2556,41 @@ async function init() {
     navigator.serviceWorker.register('sw.js').then((reg) => {
       // an installed app can stay open for hours: look for a new version when it comes back to the
       // foreground and every 10 minutes while visible, so nobody has to close and reopen it
-      const check = () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); };
+      const check = async () => {
+        if (document.visibilityState !== 'visible') return;
+        reg.update().catch(() => {});
+        // also ask the server directly (bypassing caches) which version is live; if the service worker
+        // update didn't come through, reload once for that version
+        const live = await liveVersion();
+        if (!live || live === APP_VERSION || sessionStorage.getItem('lp.reloadedFor') === live) return;
+        setTimeout(() => {
+          if (reloaded) return;
+          sessionStorage.setItem('lp.reloadedFor', live);
+          if (busy()) { pending = true; toast('มีเวอร์ชันใหม่ ' + live + ' — จะอัปเดตเมื่อปิดหน้านี้'); } else reloadNow();
+        }, 4000);
+      };
       document.addEventListener('visibilitychange', check);
       setInterval(check, 10 * 60 * 1000);
     }).catch((e) => console.warn('SW', e));
   }
   watchData();
+}
+
+/** The version currently published (from sw.js, fetched past every cache). */
+async function liveVersion() {
+  try {
+    const r = await fetch('sw.js?__v=' + Date.now(), { cache: 'no-store' });
+    return r.ok ? (/VERSION = '([^']+)'/.exec(await r.text()) || [])[1] || null : null;
+  } catch { return null; }
+}
+
+async function manualUpdate() {
+  toast('กำลังเช็กอัปเดต…');
+  const live = await liveVersion();
+  const reg = await navigator.serviceWorker?.getRegistration().catch(() => null);
+  await reg?.update().catch(() => {});
+  if (live && live === APP_VERSION) { toast(`ใช้เวอร์ชันล่าสุดอยู่แล้ว (v${APP_VERSION})`); return; }
+  setTimeout(() => location.reload(), 800);
 }
 
 /** Pick up lineups published from another device without a reload: re-read data/lineups.json when the
@@ -2572,7 +2602,7 @@ function watchData() {
     if (busyFetch || document.visibilityState !== 'visible' || location.protocol === 'file:') return;
     busyFetch = true;
     try {
-      const r = await fetch('data/lineups.json', { cache: 'no-cache' });
+      const r = await fetch('data/lineups.json?__v=' + Date.now(), { cache: 'no-store' });
       if (!r.ok) return;
       const j = await r.json();
       const arr = (Array.isArray(j) ? j : j.lineups || []).filter((x) => x && typeof x === 'object' && x.id);
