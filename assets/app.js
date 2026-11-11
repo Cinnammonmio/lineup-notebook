@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.17.2';
+const APP_VERSION = '1.17.3';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -873,10 +873,11 @@ function renderPlanList(ul, cnt) {
     },
       el('button', { type: 'button', class: 'card-main', onclick: () => { state.plan = pl.id; state.tab = 'plans'; state.selected = null; render(); } },
         el('span', { class: 'card-body' },
-          el('span', { class: 'card-title', text: pl.title || '(แผนไม่มีชื่อ)' }),
-          el('span', { class: 'card-meta' },
-            pl.side ? el('i', { class: 'side-dot ' + pl.side, title: SIDE_LABEL[pl.side] }) : null,
-            [pl.site && 'ไซต์ ' + pl.site, `${items.length} lineup`, pl.smokes?.length && `${pl.smokes.length} สโมก`].filter(Boolean).join(' · ')),
+          el('span', { class: 'plan-line' },
+            el('span', { class: 'card-title', text: pl.title || '(แผนไม่มีชื่อ)' }),
+            el('span', { class: 'card-meta' },
+              pl.side ? el('i', { class: 'side-dot ' + pl.side, title: SIDE_LABEL[pl.side] }) : null,
+              [pl.site && 'ไซต์ ' + pl.site, `${items.length} lineup`, pl.smokes?.length && `${pl.smokes.length} สโมก`].filter(Boolean).join(' · '))),
           el('span', { class: 'plan-icons' }, items.map((l, i) => planIcon(l.agent, l.ability, `${i + 1}. ${l.title}`)),
             (pl.smokes || []).map((sm) => planIcon(sm.agent, sm.ability, `สโมก: ${sm.agent} · ${sm.ability}`, true))),
           pl._local ? el('span', { class: 'chips' }, el('span', { class: 'chip warn', text: 'ยังไม่ export' })) : null)),
