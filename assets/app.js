@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.17.0';
+const APP_VERSION = '1.17.1';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -1317,7 +1317,7 @@ function pairFig(m, label, badge) {
 
 /* ---------- full-screen image with zoom: pinch / double-tap / wheel / buttons, drag to pan ---------- */
 
-const zm = { s: 1, x: 0, y: 0, pts: new Map(), pinch: null, tap: null, lastTap: 0, img: null, stage: null };
+const zm = { s: 1, x: 0, y: 0, pts: new Map(), pinch: null, tap: null, img: null, stage: null };
 const Z_MAX = 6;
 
 function zoom(src, caption, badge) {
@@ -1411,14 +1411,8 @@ function bindZoomStage(stage) {
     const t = zm.tap;
     zm.tap = null;
     if (!t || e.type === 'pointercancel' || Date.now() - t.t > 300) return;
-    if (Date.now() - zm.lastTap < 320) { // double tap: toggle 2.5× at that spot
-      zm.lastTap = 0;
-      if (zm.s > 1.01) zoomReset(true); else zoomAt(2.5, e.clientX, e.clientY, true);
-    } else {
-      zm.lastTap = Date.now();
-      // tap on the black area closes — on 'click', so the follow-up click can't hit (and reopen) the image underneath
-      zm.closeOnClick = !t.onImg && zm.s <= 1.01;
-    }
+    // tap on the black area closes — on 'click', so the follow-up click can't hit (and reopen) the image underneath
+    zm.closeOnClick = !t.onImg && zm.s <= 1.01;
   };
   stage.addEventListener('pointerup', up);
   stage.addEventListener('pointercancel', up);
@@ -2906,6 +2900,10 @@ function syncAppHeight() {
 }
 
 async function init() {
+  // no page zoom (double-tap / pinch): it shifts the fixed layout and leaves a gap at the bottom.
+  // Pictures still zoom in their own viewer.
+  for (const ev of ['gesturestart', 'gesturechange']) document.addEventListener(ev, (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('dblclick', (e) => e.preventDefault(), { passive: false });
   syncAppHeight();
   window.addEventListener('resize', syncAppHeight);
   window.addEventListener('orientationchange', () => setTimeout(syncAppHeight, 300));
