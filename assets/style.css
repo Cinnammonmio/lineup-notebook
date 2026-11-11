@@ -710,3 +710,22 @@ dialog.annot::backdrop { background: #000; }
 .spike.final .spike-hint { top: -22px; font-size: 13px; }
 .spike.final .spike-time { font-size: 32px; }
 .spike.running.final { padding-bottom: 18px; }
+
+/* spike: full screen in the last 15 s (top layer, above any open dialog) */
+.spike-min { display: none; flex: 0 0 auto; height: 36px; padding: 0 12px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); color: var(--text); font-size: 14px; cursor: pointer; }
+.spike.running.full {
+  position: fixed; inset: 0; margin: 0; width: auto; height: auto; max-width: none; max-height: none; z-index: 100;
+  border: 0; border-radius: 0; padding: max(16px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(24px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  display: grid; grid-template-columns: auto 1fr auto auto; grid-template-rows: auto 1fr auto; gap: 12px 16px; align-items: center;
+  background: radial-gradient(circle at 50% 40%, color-mix(in srgb, var(--sc) 22%, #0b0e13), #07090c 70%);
+  color: var(--text); overflow: hidden;
+}
+.spike.full .spike-ic { grid-column: 1; grid-row: 1; }
+.spike.full .spike-ic svg, .spike.full .spike-ic img { width: 48px; height: 48px; }
+.spike.full .spike-min { display: inline-block; grid-column: 3; grid-row: 1; height: 44px; padding: 0 16px; }
+.spike.full .spike-x { grid-column: 4; grid-row: 1; width: 44px; height: 44px; }
+.spike.full .spike-time { grid-column: 1 / -1; grid-row: 2; text-align: center; font-size: min(38vh, 26vw); line-height: .9; }
+.spike.full .spike-track { grid-column: 1 / -1; grid-row: 3; height: max(34px, 9vh); margin: 0 2% max(26px, 5vh); }
+.spike.full .spike-mark { top: -10px; bottom: -10px; width: 4px; margin-left: -2px; }
+.spike.full .spike-mark::after { font-size: max(16px, 3.4vh); margin-top: 6px; }
+.spike.full .spike-hint { top: auto; bottom: calc(100% + 10px); font-size: max(18px, 4.5vh); }
