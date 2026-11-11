@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.14.0';
+const APP_VERSION = '1.14.1';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -485,11 +485,31 @@ function renderMap() {
   if (p?.draft?.from) svg.append(svgEl('circle', { cx: p.draft.from.x * 1000, cy: p.draft.from.y * 1000, r: 13, class: 'tmp' }));
   $('#mapWrap').classList.toggle('picking', !!p || !!state.smokePick);
 
-  // zoom the map to whatever is chosen: a highlighted lineup, or an opened / previewed plan
+  state.drawn = { list, smokes, plan };
+  zoomForState();
+}
+
+/** Zoom the map to whatever is chosen: a highlighted lineup, or an opened / previewed plan. */
+function zoomForState() {
+  const d = state.drawn;
+  if (!d) return;
+  const sel = state.selected;
   const focus = state.pick || state.smokePick ? null
-    : sel ? list.filter((l) => l.id === sel)
-      : plan ? list : null;
-  zoomMapTo(focus && [...focus.flatMap((l) => [l.from, l.to]).filter(Boolean), ...(focus === list ? smokes : [])]);
+    : sel ? d.list.filter((l) => l.id === sel)
+      : d.plan ? d.list : null;
+  zoomMapTo(focus && [...focus.flatMap((l) => [l.from, l.to]).filter(Boolean), ...(focus === d.list ? d.smokes : [])]);
+}
+
+/** Change the highlighted lineup without rebuilding the page (rebuilding made every icon flicker). */
+function applySelection() {
+  const sel = state.selected;
+  for (const n of document.querySelectorAll('#mapSvg [data-id], #pins .pin[data-id]')) {
+    const id = n.getAttribute('data-id');
+    n.classList.toggle('dim', !!sel && id !== sel);
+    n.classList.toggle('sel', id === sel);
+  }
+  for (const c of document.querySelectorAll('#list .card[data-id]')) c.classList.toggle('sel', c.dataset.id === sel);
+  zoomForState();
 }
 
 /** Fit the map view around these points (0–1 coords); nothing → whole map. Icons keep their size. */
@@ -520,8 +540,24 @@ function zoomMapTo(points) {
 /* ---------- spike timer: 45 s from plant, with the defuse windows marked ---------- */
 
 const SPIKE = { total: 45, full: 7, half: 3.5 };
-const SPIKE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 4h-6zM7 7h10l2 9-7 6-7-6z" fill="currentColor" opacity=".25"/><path d="M12 2l3 4h-6zM7 7h10l2 9-7 6-7-6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 9v6M9.5 12h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
-const spike = { start: 0, raf: 0, buzzed: new Set(), doneTimer: 0 };
+/* fallback drawing: a planted spike — capped canister with a glowing core and bands */
+const SPIKE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M8 3h8l1.5 3v12L12 22l-5.5-4V6z" fill="currentColor" opacity=".22"/><path d="M8 3h8l1.5 3v12L12 22l-5.5-4V6z" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"/><path d="M6.5 6h11M6.5 15h11" stroke="currentColor" stroke-width="1.3"/><rect x="10.6" y="7.5" width="2.8" height="6" rx="1.4" fill="currentColor"/></svg>';
+const spike = { start: 0, raf: 0, buzzed: new Set(), doneTimer: 0, img: store.get('lp.spikeIcon', null)?.url || null };
+const spikeIconHtml = () => (spike.img ? `<img src="${spike.img}" alt="">` : SPIKE_ICON);
+
+/** The in-game Spike icon from valorant-api (game-mode equippables), cached; the drawn icon is the fallback. */
+async function loadSpikeIcon() {
+  const c = store.get('lp.spikeIcon', null);
+  if (c && Date.now() - c.t < API_TTL) return;
+  try {
+    const r = await fetch('https://valorant-api.com/v1/gamemodes/equippables');
+    if (!r.ok) return;
+    const item = ((await r.json()).data || []).find((x) => /spike|bomb/i.test(x.displayName || ''));
+    const url = item?.displayIcon || item?.killStreamIcon || null;
+    store.set('lp.spikeIcon', { t: Date.now(), url });
+    if (url && url !== spike.img) { spike.img = url; if (!spike.start) spikeIdle(); }
+  } catch { /* offline: keep the drawn icon */ }
+}
 
 function spikeIdle() {
   cancelAnimationFrame(spike.raf);
@@ -530,7 +566,7 @@ function spikeIdle() {
   const box = $('#spike');
   box.className = 'spike';
   box.replaceChildren(el('button', { type: 'button', class: 'spike-go', title: 'เริ่มนับเวลา spike (45 วิ)', 'aria-label': 'เริ่มนับเวลา spike 45 วินาที', onclick: spikeStart }));
-  box.firstChild.innerHTML = SPIKE_ICON + '<b>45</b>';
+  box.firstChild.innerHTML = spikeIconHtml() + '<b>45</b>';
 }
 
 function spikeStart() {
@@ -542,19 +578,25 @@ function spikeStart() {
     el('span', { class: 'spike-ic' }),
     el('div', { class: 'spike-track' },
       el('div', { class: 'spike-fill' }),
-      el('i', { class: 'spike-mark', style: `left:${(SPIKE.full / SPIKE.total) * 100}%`, title: 'กู้เต็มต้องเริ่มก่อน 7 วิ' }),
-      el('i', { class: 'spike-mark half', style: `left:${(SPIKE.half / SPIKE.total) * 100}%`, title: 'กู้ครึ่งต้องเริ่มก่อน 3.5 วิ' }),
+      el('i', { class: 'spike-mark', 'data-l': '7', style: `left:${(SPIKE.full / SPIKE.total) * 100}%`, title: 'กู้เต็มต้องเริ่มก่อน 7 วิ' }),
+      el('i', { class: 'spike-mark half', 'data-l': '3.5', style: `left:${(SPIKE.half / SPIKE.total) * 100}%`, title: 'กู้ครึ่งต้องเริ่มก่อน 3.5 วิ' }),
       el('span', { class: 'spike-hint' })),
     el('b', { class: 'spike-time' }),
     el('button', { type: 'button', class: 'spike-x', 'aria-label': 'หยุดนับเวลา', title: 'หยุด', onclick: spikeIdle }, '✕'));
-  box.querySelector('.spike-ic').innerHTML = SPIKE_ICON;
+  box.querySelector('.spike-ic').innerHTML = spikeIconHtml();
   spikeTick();
 }
 
 function spikeTick() {
   const left = Math.max(0, SPIKE.total - (performance.now() - spike.start) / 1000);
   const box = $('#spike');
-  box.querySelector('.spike-fill').style.width = (left / SPIKE.total) * 100 + '%';
+  // last 10 s: the bar switches to a 10-second scale and grows, so the 7 / 3.5 s defuse marks are far apart
+  const final = left < 10, scale = final ? 10 : SPIKE.total;
+  box.classList.toggle('final', final);
+  box.querySelector('.spike-fill').style.width = (left / scale) * 100 + '%';
+  const [mFull, mHalf] = box.querySelectorAll('.spike-mark');
+  mFull.style.left = (SPIKE.full / scale) * 100 + '%';
+  mHalf.style.left = (SPIKE.half / scale) * 100 + '%';
   box.querySelector('.spike-time').textContent = left >= 10 ? Math.ceil(left) : left.toFixed(1);
   const phase = left <= 0 ? 'boom' : left < SPIKE.half ? 'lost' : left < SPIKE.full ? 'half' : left < 10 ? 'warn' : 'ok';
   box.dataset.phase = phase;
@@ -575,7 +617,7 @@ function highlightLineup(id) {
   if (state.peek) closePeek();
   state.selected = state.selected === id ? null : id;
   updateHash();
-  render();
+  applySelection();
 }
 
 /** Touch: tapping a pin highlights it and scrolls its card into view; tapping the same spot again
@@ -586,7 +628,7 @@ function selectFromPin(id) {
   const pick = cur >= 0 ? ids[(cur + 1) % ids.length] : id;
   state.selected = pick;
   updateHash();
-  render();
+  applySelection();
   const card = document.querySelector(`#list .card[data-id="${CSS.escape(pick)}"]`);
   card?.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
   if (ids.length > 1) toast(`${ids.indexOf(pick) + 1}/${ids.length} · แตะซ้ำเพื่อสลับ lineup ที่ซ้อนกัน`);
@@ -1384,10 +1426,11 @@ function neighbour(id, dir) {
 function openDetail(id) {
   const l = all().find((x) => x.id === id);
   if (!l) { toast('ไม่พบ lineup นี้'); return; }
-  if (norm(l.map) !== norm(state.map)) state.map = canonMap(l.map) || l.map;
+  const mapChanged = norm(l.map) !== norm(state.map);
+  if (mapChanged) state.map = canonMap(l.map) || l.map;
   state.selected = id;
   updateHash();
-  render();
+  if (mapChanged || !document.querySelector(`#list .card[data-id="${CSS.escape(id)}"]`)) render(); else applySelection();
 
   const d = $('#detail');
   const icon = iconFor(l);
@@ -2451,6 +2494,7 @@ function bindUi() {
   $('#peek').addEventListener('click', (e) => e.stopPropagation()); // clicks inside the preview don't reach the map
   $('#spike').addEventListener('click', (e) => e.stopPropagation());
   spikeIdle();
+  loadSpikeIcon();
   $('#filterPop').addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => { if (!$('#filterPop').hidden) { $('#filterPop').hidden = true; renderList(); } });
   window.addEventListener('resize', () => renderMap());
@@ -2494,7 +2538,7 @@ function bindUi() {
   for (const d of [$('#detail'), $('#editor')]) {
     d.addEventListener('click', (e) => { if (e.target === d) d.close(); });
   }
-  $('#detail').addEventListener('close', () => { state.selected = null; updateHash(); render(); });
+  $('#detail').addEventListener('close', () => { state.selected = null; updateHash(); applySelection(); });
   for (const b of document.querySelectorAll('#editor [data-close]')) b.addEventListener('click', () => $('#editor').close());
 
   // editor
