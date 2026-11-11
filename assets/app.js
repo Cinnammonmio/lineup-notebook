@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.14.1';
+const APP_VERSION = '1.15.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -559,10 +559,30 @@ async function loadSpikeIcon() {
   } catch { /* offline: keep the drawn icon */ }
 }
 
+const SPIKE_FULLSCREEN_AT = 15; // seconds left when the timer takes over the whole screen
+
+/** Full screen covers everything. An open (modal) dialog makes the rest of the page inert, so the
+ *  timer moves into that dialog while one is open, and back under the map afterwards. */
+const SPIKE_HOSTS = ['#zoom', '#annot', '#editor', '#planEditor', '#ghDialog', '#detail'];
+function spikeHost() {
+  const box = $('#spike');
+  const want = box.classList.contains('full')
+    ? SPIKE_HOSTS.map((q) => $(q)).find((d) => d?.open) || document.body
+    : $('#mapWrap');
+  if (box.parentNode !== want) want.append(box);
+}
+function spikeSetFull(on) {
+  const box = $('#spike');
+  if (box.classList.contains('full') !== on) box.classList.toggle('full', on);
+  spikeHost();
+}
+
 function spikeIdle() {
   cancelAnimationFrame(spike.raf);
   clearTimeout(spike.doneTimer);
   spike.start = 0;
+  spike.mini = false;
+  spikeSetFull(false);
   const box = $('#spike');
   box.className = 'spike';
   box.replaceChildren(el('button', { type: 'button', class: 'spike-go', title: 'เริ่มนับเวลา spike (45 วิ)', 'aria-label': 'เริ่มนับเวลา spike 45 วินาที', onclick: spikeStart }));
@@ -582,6 +602,7 @@ function spikeStart() {
       el('i', { class: 'spike-mark half', 'data-l': '3.5', style: `left:${(SPIKE.half / SPIKE.total) * 100}%`, title: 'กู้ครึ่งต้องเริ่มก่อน 3.5 วิ' }),
       el('span', { class: 'spike-hint' })),
     el('b', { class: 'spike-time' }),
+    el('button', { type: 'button', class: 'spike-min', 'aria-label': 'ย่อ', title: 'ย่อเป็นแถบเล็ก', onclick: () => { spike.mini = true; spikeSetFull(false); } }, 'ย่อ'),
     el('button', { type: 'button', class: 'spike-x', 'aria-label': 'หยุดนับเวลา', title: 'หยุด', onclick: spikeIdle }, '✕'));
   box.querySelector('.spike-ic').innerHTML = spikeIconHtml();
   spikeTick();
@@ -590,9 +611,11 @@ function spikeStart() {
 function spikeTick() {
   const left = Math.max(0, SPIKE.total - (performance.now() - spike.start) / 1000);
   const box = $('#spike');
-  // last 10 s: the bar switches to a 10-second scale and grows, so the 7 / 3.5 s defuse marks are far apart
-  const final = left < 10, scale = final ? 10 : SPIKE.total;
+  // last 15 s: full screen (unless minimised), and the bar switches to a 15-second scale so the
+  // 7 / 3.5 s defuse marks are far apart
+  const final = left < SPIKE_FULLSCREEN_AT, scale = final ? SPIKE_FULLSCREEN_AT : SPIKE.total;
   box.classList.toggle('final', final);
+  spikeSetFull(final && !spike.mini && left > 0 || (left <= 0 && box.classList.contains('full')));
   box.querySelector('.spike-fill').style.width = (left / scale) * 100 + '%';
   const [mFull, mHalf] = box.querySelectorAll('.spike-mark');
   mFull.style.left = (SPIKE.full / scale) * 100 + '%';
@@ -603,7 +626,7 @@ function spikeTick() {
   box.querySelector('.spike-hint').textContent = {
     ok: '', warn: 'เตรียมกู้', half: 'กู้เต็มไม่ทัน · ต้องกู้ครึ่งไว้แล้ว', lost: 'ไม่ทันกู้แล้ว', boom: 'ระเบิด!',
   }[phase];
-  for (const [t, ms] of [[10, 80], [SPIKE.full, 160], [0, 500]]) {
+  for (const [t, ms] of [[SPIKE_FULLSCREEN_AT, 60], [10, 80], [SPIKE.full, 160], [0, 500]]) {
     if (left <= t && !spike.buzzed.has(t)) { spike.buzzed.add(t); navigator.vibrate?.(ms); }
   }
   if (left <= 0) { spike.doneTimer = setTimeout(spikeIdle, 3000); return; }
@@ -2493,6 +2516,9 @@ function bindUi() {
   $('#mapWrap').addEventListener('click', onMapClick);
   $('#peek').addEventListener('click', (e) => e.stopPropagation()); // clicks inside the preview don't reach the map
   $('#spike').addEventListener('click', (e) => e.stopPropagation());
+  // a dialog opening or closing while the timer is full screen: follow it to the right place
+  document.addEventListener('close', () => setTimeout(spikeHost, 0), true);
+  for (const d of document.querySelectorAll('dialog')) new MutationObserver(spikeHost).observe(d, { attributes: true, attributeFilter: ['open'] });
   spikeIdle();
   loadSpikeIcon();
   $('#filterPop').addEventListener('click', (e) => e.stopPropagation());
