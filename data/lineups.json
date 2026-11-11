@@ -522,5 +522,38 @@
         "caption": "จุดเล็ง"
       }
     ]
+  },
+  {
+    "id": "mwc7z505w75a",
+    "title": "Nanoswarm A · Hold",
+    "map": "Lotus",
+    "agent": "Killjoy",
+    "ability": "Nanoswarm",
+    "side": "attack",
+    "site": "A",
+    "type": "hold",
+    "from": {
+      "x": 0.659,
+      "y": 0.619
+    },
+    "to": {
+      "x": 0.873,
+      "y": 0.38
+    },
+    "throw": "กระโดดแล้วปา",
+    "media": [
+      {
+        "src": "media/lotus/killjoy-a-nanoswarm-mwc7z505w75a-stand-vmwc7z505.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/lotus/killjoy-a-nanoswarm-mwc7z505w75a-aim-vmwc7z50b.webp",
+        "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/lotus/killjoy-a-nanoswarm-mwc7z505w75a-aim2-vmwc7z50g.webp",
+        "caption": "จุดเล็ง 2"
+      }
+    ]
   }
 ]
