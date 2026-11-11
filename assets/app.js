@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.17.3';
+const APP_VERSION = '1.18.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -399,6 +399,36 @@ function render() {
   renderFilters();
   renderList();
   renderUnsynced();
+  prefetchMapMedia();
+}
+
+/** Download this map's lineup pictures in the background (idle, 2 at a time) so the service
+ *  worker has them cached and opening a lineup is instant. Skipped with Data Saver on. */
+const prefetched = new Set();
+let prefetchMapKey = null;
+function prefetchMapMedia() {
+  const map = state.map;
+  if (!map || map === prefetchMapKey || !('serviceWorker' in navigator)) return;
+  if (navigator.connection?.saveData || /(^|-)2g$/.test(navigator.connection?.effectiveType || '')) return;
+  prefetchMapKey = map;
+  const queue = [];
+  for (const l of all()) {
+    if (l.kind === 'plan' || norm(l.map) !== norm(map)) continue;
+    for (const m of l.media || []) {
+      const src = m?.src || '';
+      if (/^media\/.+\.(webp|png|jpe?g|avif|gif)$/i.test(src) && !localUrls.has(src) && !prefetched.has(src)) queue.push(src);
+    }
+  }
+  if (!queue.length) return;
+  const idle = window.requestIdleCallback || ((f) => setTimeout(f, 800));
+  const worker = async () => {
+    while (queue.length && state.map === map) {
+      const src = queue.shift();
+      prefetched.add(src);
+      try { await fetch(src, { priority: 'low' }); } catch { prefetched.delete(src); }
+    }
+  };
+  idle(() => { worker(); worker(); }, { timeout: 3000 });
 }
 
 function renderMaps() {
@@ -1211,7 +1241,7 @@ function mediaEl({ src, caption }) {
     node = el('video', { src: mediaSrc(src), controls: true, muted: true, loop: true, playsinline: true, preload: 'metadata' });
   } else if (/\.(png|jpe?g|webp|gif|avif|bmp)(\?|#|$)/i.test(src) || /^(media\/|data:image\/)/i.test(src)) {
     node = el('button', { type: 'button', class: 'zoomable', onclick: () => zoom(src, caption), 'aria-label': 'ขยายรูป' },
-      el('img', { src: mediaSrc(src), alt: caption || '', loading: 'lazy' }));
+      el('img', { src: mediaSrc(src), alt: caption || '', decoding: 'async', fetchpriority: 'high' }));
   } else {
     node = el('a', { class: 'link', href: safeHref(src), target: '_blank', rel: 'noopener noreferrer', text: src });
   }
