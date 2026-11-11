@@ -226,5 +226,38 @@
         "y": 0.341
       }
     ]
+  },
+  {
+    "id": "mwc37ru64b2p",
+    "title": "Mosh Pit B · Entry",
+    "map": "Summit",
+    "agent": "Gekko",
+    "ability": "Mosh Pit",
+    "side": "attack",
+    "site": "B",
+    "type": "entry",
+    "from": {
+      "x": 0.239,
+      "y": 0.529
+    },
+    "to": {
+      "x": 0.18,
+      "y": 0.28
+    },
+    "throw": "ปาปกติ",
+    "media": [
+      {
+        "src": "media/summit/gekko-b-mosh-pit-mwc37ru64b2p-stand-vmwc37ru6.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/summit/gekko-b-mosh-pit-mwc37ru64b2p-aim-vmwc37ruf.webp",
+        "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/summit/gekko-b-mosh-pit-mwc37ru64b2p-aim2-vmwc37ruk.webp",
+        "caption": "จุดเล็ง 2"
+      }
+    ]
   }
 ]
