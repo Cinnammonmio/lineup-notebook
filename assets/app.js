@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.13.0';
+const APP_VERSION = '1.14.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -515,6 +515,57 @@ function zoomMapTo(points) {
     c.setAttribute('r', (+c.dataset.r / z).toFixed(2));
   }
   wrap.classList.toggle('zoomed', z > 1);
+}
+
+/* ---------- spike timer: 45 s from plant, with the defuse windows marked ---------- */
+
+const SPIKE = { total: 45, full: 7, half: 3.5 };
+const SPIKE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 4h-6zM7 7h10l2 9-7 6-7-6z" fill="currentColor" opacity=".25"/><path d="M12 2l3 4h-6zM7 7h10l2 9-7 6-7-6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 9v6M9.5 12h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+const spike = { start: 0, raf: 0, buzzed: new Set(), doneTimer: 0 };
+
+function spikeIdle() {
+  cancelAnimationFrame(spike.raf);
+  clearTimeout(spike.doneTimer);
+  spike.start = 0;
+  const box = $('#spike');
+  box.className = 'spike';
+  box.replaceChildren(el('button', { type: 'button', class: 'spike-go', title: 'เริ่มนับเวลา spike (45 วิ)', 'aria-label': 'เริ่มนับเวลา spike 45 วินาที', onclick: spikeStart }));
+  box.firstChild.innerHTML = SPIKE_ICON + '<b>45</b>';
+}
+
+function spikeStart() {
+  spike.start = performance.now();
+  spike.buzzed.clear();
+  const box = $('#spike');
+  box.className = 'spike running';
+  box.replaceChildren(
+    el('span', { class: 'spike-ic' }),
+    el('div', { class: 'spike-track' },
+      el('div', { class: 'spike-fill' }),
+      el('i', { class: 'spike-mark', style: `left:${(SPIKE.full / SPIKE.total) * 100}%`, title: 'กู้เต็มต้องเริ่มก่อน 7 วิ' }),
+      el('i', { class: 'spike-mark half', style: `left:${(SPIKE.half / SPIKE.total) * 100}%`, title: 'กู้ครึ่งต้องเริ่มก่อน 3.5 วิ' }),
+      el('span', { class: 'spike-hint' })),
+    el('b', { class: 'spike-time' }),
+    el('button', { type: 'button', class: 'spike-x', 'aria-label': 'หยุดนับเวลา', title: 'หยุด', onclick: spikeIdle }, '✕'));
+  box.querySelector('.spike-ic').innerHTML = SPIKE_ICON;
+  spikeTick();
+}
+
+function spikeTick() {
+  const left = Math.max(0, SPIKE.total - (performance.now() - spike.start) / 1000);
+  const box = $('#spike');
+  box.querySelector('.spike-fill').style.width = (left / SPIKE.total) * 100 + '%';
+  box.querySelector('.spike-time').textContent = left >= 10 ? Math.ceil(left) : left.toFixed(1);
+  const phase = left <= 0 ? 'boom' : left < SPIKE.half ? 'lost' : left < SPIKE.full ? 'half' : left < 10 ? 'warn' : 'ok';
+  box.dataset.phase = phase;
+  box.querySelector('.spike-hint').textContent = {
+    ok: '', warn: 'เตรียมกู้', half: 'กู้เต็มไม่ทัน · ต้องกู้ครึ่งไว้แล้ว', lost: 'ไม่ทันกู้แล้ว', boom: 'ระเบิด!',
+  }[phase];
+  for (const [t, ms] of [[10, 80], [SPIKE.full, 160], [0, 500]]) {
+    if (left <= t && !spike.buzzed.has(t)) { spike.buzzed.add(t); navigator.vibrate?.(ms); }
+  }
+  if (left <= 0) { spike.doneTimer = setTimeout(spikeIdle, 3000); return; }
+  spike.raf = requestAnimationFrame(spikeTick);
 }
 
 /** Touch screens: a card tap shows the quick preview at the lineup's pin first; mouse: open it straight away. */
@@ -2398,6 +2449,8 @@ function bindUi() {
   bindPlans();
   $('#mapWrap').addEventListener('click', onMapClick);
   $('#peek').addEventListener('click', (e) => e.stopPropagation()); // clicks inside the preview don't reach the map
+  $('#spike').addEventListener('click', (e) => e.stopPropagation());
+  spikeIdle();
   $('#filterPop').addEventListener('click', (e) => e.stopPropagation());
   document.addEventListener('click', () => { if (!$('#filterPop').hidden) { $('#filterPop').hidden = true; renderList(); } });
   window.addEventListener('resize', () => renderMap());

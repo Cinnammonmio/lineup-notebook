@@ -125,7 +125,7 @@ a { color: var(--accent); }
 }
 @media (max-width: 899px) { .map-wrap { max-width: 100%; } }
 #mapImg { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; pointer-events: none; -webkit-user-drag: none; }
-.map-wrap svg, .mini svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+#mapSvg, .mini > svg { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
 .pins { position: absolute; inset: 0; }
 .side-btn {
   position: absolute; z-index: 3; left: 6px; top: 6px;
@@ -672,3 +672,31 @@ dialog.annot::backdrop { background: #000; }
   background: var(--panel); border: 1px solid var(--line2); box-shadow: 0 12px 30px #000b;
 }
 .filter-pop .fsel { flex: 1 1 140px; }
+
+/* ---------- spike timer (bottom-left of the map, near the left thumb) ---------- */
+.spike { position: absolute; z-index: 5; left: 8px; bottom: 8px; }
+.map-wrap.picking .spike { display: none; }
+.spike-go {
+  display: inline-flex; align-items: center; gap: 6px; height: 40px; padding: 0 12px 0 8px; border-radius: 999px;
+  border: 1px solid #ff465588; background: #0b0e13d9; color: #ff4655; cursor: pointer;
+  font: 700 15px/1 "Chakra Petch", var(--font); -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+}
+.spike-go svg, .spike-ic svg { width: 24px; height: 24px; display: block; }
+.spike-go b { color: var(--text); }
+.spike.running {
+  right: 8px; display: flex; align-items: center; gap: 10px; padding: 8px 8px 8px 10px; border-radius: 14px;
+  background: #0b0e13e6; border: 1px solid var(--line2); box-shadow: 0 8px 24px #000a; -webkit-backdrop-filter: blur(4px); backdrop-filter: blur(4px);
+  --sc: var(--accent);
+}
+.spike[data-phase=warn] { --sc: #f5c04d; }
+.spike[data-phase=half], .spike[data-phase=lost] { --sc: #ff4655; }
+.spike[data-phase=boom] { --sc: #ff4655; animation: spike-flash .25s steps(2) 6; }
+@keyframes spike-flash { 50% { background: #ff465555; } }
+.spike-ic { color: var(--sc); flex: 0 0 auto; }
+.spike-track { position: relative; flex: 1; height: 14px; border-radius: 999px; background: #ffffff1a; overflow: visible; }
+.spike-fill { position: absolute; left: 0; top: 0; bottom: 0; border-radius: 999px; background: var(--sc); transition: background .3s; }
+.spike-mark { position: absolute; top: -4px; bottom: -4px; width: 2px; margin-left: -1px; background: #fff; opacity: .8; border-radius: 2px; }
+.spike-mark.half { opacity: .45; }
+.spike-hint { position: absolute; left: 0; right: 0; top: -20px; text-align: center; font-size: 12px; font-weight: 700; color: var(--sc); text-shadow: 0 1px 2px #000; white-space: nowrap; }
+.spike-time { min-width: 52px; text-align: right; font: 700 26px/1 "Chakra Petch", var(--font); color: var(--sc); font-variant-numeric: tabular-nums; }
+.spike-x { flex: 0 0 auto; width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); color: var(--muted); font-size: 16px; cursor: pointer; }
