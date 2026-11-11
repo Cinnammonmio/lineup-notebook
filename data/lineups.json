@@ -324,5 +324,38 @@
         "caption": "จุดเล็ง 2"
       }
     ]
+  },
+  {
+    "id": "mwc5llp175hu",
+    "title": "Mosh Pit C · Entry",
+    "map": "Haven",
+    "agent": "Gekko",
+    "ability": "Mosh Pit",
+    "side": "attack",
+    "site": "C",
+    "type": "entry",
+    "from": {
+      "x": 0.748,
+      "y": 0.769
+    },
+    "to": {
+      "x": 0.352,
+      "y": 0.802
+    },
+    "throw": "กระโดดแล้วปา",
+    "media": [
+      {
+        "src": "media/haven/gekko-c-mosh-pit-mwc5llp175hu-stand-vmwc5llp1.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/haven/gekko-c-mosh-pit-mwc5llp175hu-aim-vmwc5llpa.webp",
+        "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/haven/gekko-c-mosh-pit-mwc5llp175hu-aim2-vmwc5llpg.webp",
+        "caption": "จุดเล็ง 2"
+      }
+    ]
   }
 ]
