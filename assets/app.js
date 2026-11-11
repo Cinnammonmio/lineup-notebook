@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.11.3';
+const APP_VERSION = '1.12.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -2536,17 +2536,53 @@ async function init() {
 
   if ('serviceWorker' in navigator && location.protocol !== 'file:') {
     // When a new version's service worker takes over, reload once so the new code runs —
-    // unless the editor is open (don't lose unsaved input), then just say so.
+    // but not while a dialog is open (unsaved input / something being viewed): wait until it closes.
     const hadController = !!navigator.serviceWorker.controller;
-    let reloaded = false;
+    let reloaded = false, pending = false;
+    const busy = () => [...document.querySelectorAll('dialog')].some((d) => d.open) || !!state.pick || !!state.smokePick;
+    const reloadNow = () => { if (reloaded) return; reloaded = true; location.reload(); };
     navigator.serviceWorker.addEventListener('controllerchange', () => {
       if (!hadController || reloaded) return;
-      if ($('#editor').open || $('#annot').open) { toast('มีเวอร์ชันใหม่ — บันทึกแล้วรีเฟรชเพื่อใช้'); return; }
-      reloaded = true;
-      location.reload();
+      if (busy()) { pending = true; toast('มีเวอร์ชันใหม่ — จะอัปเดตเมื่อปิดหน้านี้'); } else reloadNow();
     });
-    navigator.serviceWorker.register('sw.js').catch((e) => console.warn('SW', e));
+    // a dialog closing may be the moment we were waiting for
+    document.addEventListener('close', () => setTimeout(() => { if (pending && !busy()) reloadNow(); }, 50), true);
+    navigator.serviceWorker.register('sw.js').then((reg) => {
+      // an installed app can stay open for hours: look for a new version when it comes back to the
+      // foreground and every 10 minutes while visible, so nobody has to close and reopen it
+      const check = () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); };
+      document.addEventListener('visibilitychange', check);
+      setInterval(check, 10 * 60 * 1000);
+    }).catch((e) => console.warn('SW', e));
   }
+  watchData();
+}
+
+/** Pick up lineups published from another device without a reload: re-read data/lineups.json when the
+ *  app comes back to the foreground and every 2 minutes while visible. */
+function watchData() {
+  let last = stable(state.base.map(clean));
+  let busyFetch = false;
+  const refresh = async () => {
+    if (busyFetch || document.visibilityState !== 'visible' || location.protocol === 'file:') return;
+    busyFetch = true;
+    try {
+      const r = await fetch('data/lineups.json', { cache: 'no-cache' });
+      if (!r.ok) return;
+      const j = await r.json();
+      const arr = (Array.isArray(j) ? j : j.lineups || []).filter((x) => x && typeof x === 'object' && x.id);
+      const now = stable(arr.map(clean));
+      if (now === last) return;
+      last = now;
+      state.base = arr;
+      pruneLocal();
+      cleanLocalMedia();
+      if (!$('#editor').open && !$('#planEditor').open) render();
+      toast('อัปเดต lineup ล่าสุดแล้ว');
+    } catch { /* offline: try again later */ } finally { busyFetch = false; }
+  };
+  document.addEventListener('visibilitychange', refresh);
+  setInterval(refresh, 2 * 60 * 1000);
 }
 
 init();
