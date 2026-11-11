@@ -729,3 +729,21 @@ dialog.annot::backdrop { background: #000; }
 .spike.full .spike-mark { top: -10px; bottom: -10px; width: 4px; margin-left: -2px; }
 .spike.full .spike-mark::after { font-size: max(16px, 3.4vh); margin-top: 6px; }
 .spike.full .spike-hint { top: auto; bottom: calc(100% + 10px); font-size: max(18px, 4.5vh); }
+
+/* ---------- friends: review incoming lineups ---------- */
+#reviewDialog.sheet { width: min(640px, calc(100% - 32px)); }
+.review-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 6px; }
+.rv-item { display: flex; align-items: center; gap: 10px; padding: 8px; border-radius: 10px; border: 1px solid var(--line); background: var(--panel2); cursor: pointer; }
+.rv-item.on { border-color: var(--accent); background: color-mix(in srgb, var(--accent) 10%, var(--panel2)); }
+.rv-check { flex: 0 0 auto; width: 22px; height: 22px; border-radius: 6px; border: 2px solid var(--line2); display: grid; place-items: center; font-weight: 800; color: var(--accent-ink); }
+.rv-item.on .rv-check { background: var(--accent); border-color: var(--accent); }
+.rv-face { width: 36px; height: 36px; border-radius: 8px; object-fit: cover; flex: 0 0 auto; }
+.rv-body { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.rv-body b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-body small { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.rv-thumbs { display: flex; gap: 4px; flex: 0 0 auto; }
+.rv-thumbs img, .rv-none { width: 64px; height: 36px; border-radius: 5px; object-fit: cover; background: #000; display: block; }
+.chip.by { color: #9fd3ff; border-color: #9fd3ff55; }
+
+.inbox-badge { color: #9fd3ff; border-color: #9fd3ff66; background: #9fd3ff14; }
+#inboxDialog.sheet { width: min(560px, calc(100% - 32px)); }

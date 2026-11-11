@@ -21,6 +21,7 @@
   <header class="top">
     <div class="brand" aria-label="ARC Valorant Lineups"><img src="assets/icon.svg" alt=""><span class="word">ARC</span><span class="tag">VALORANT<br>LINEUPS</span><span class="brand-ver" data-version></span></div>
     <div class="top-actions">
+      <button id="inboxBadge" class="unsynced inbox-badge" type="button" hidden></button>
       <button id="unsynced" class="unsynced" type="button" hidden></button>
       <button id="btnAdd" class="btn primary" type="button">+ เพิ่ม</button>
       <button id="btnMenu" class="btn icon" type="button" aria-label="เมนู" aria-haspopup="true" aria-expanded="false">⋯</button>
@@ -30,6 +31,10 @@
       <button type="button" data-act="github">ตั้งค่า GitHub (บันทึกแล้วขึ้นเว็บเอง)</button>
       <button type="button" data-act="publish">ขึ้น GitHub ตอนนี้</button>
       <button type="button" data-act="export">ส่งออก (lineups.json / zip พร้อมรูป)</button>
+      <button type="button" data-act="submit">📤 ส่ง lineup ให้เจ้าของ</button>
+      <button type="button" data-act="receive">📥 รับ lineup จากเพื่อน</button>
+      <button type="button" data-act="receiveFile">📄 รับจากไฟล์</button>
+      <button type="button" data-act="inbox">ตั้งค่ากล่องรับ (เจ้าของ)</button>
       <button type="button" data-act="import">นำเข้าไฟล์ JSON</button>
       <button type="button" data-act="refresh">โหลดข้อมูลแมพ/เอเจนต์ใหม่</button>
       <button type="button" data-act="reset" class="danger">ล้างการแก้ไขในเครื่องนี้</button>
@@ -196,6 +201,48 @@
     <div class="annot-stage"><canvas id="annotCanvas"></canvas></div>
   </dialog>
   <input type="file" id="shotFile" accept="image/*" hidden>
+  <input type="file" id="receiveFile" accept="application/json,.json" hidden>
+
+  <dialog id="inboxDialog" class="sheet" aria-labelledby="inboxTitle">
+    <form id="inboxForm" class="sheet-inner" novalidate>
+      <header class="sheet-head">
+        <h2 id="inboxTitle" class="grow">กล่องรับ lineup จากเพื่อน</h2>
+        <button type="button" class="btn icon" data-close aria-label="ปิด">✕</button>
+      </header>
+      <div class="sheet-body form">
+        <p class="muted">เพื่อนกด “📤 ส่ง lineup ให้เจ้าของ” แล้วเข้ากล่องรับนี้ทันที (ไม่ต้องสมัครอะไร) · ตั้งค่าครั้งเดียว ดูวิธีใน docs/inbox-setup.md</p>
+        <label>Supabase Project URL<input name="url" autocomplete="off" spellcheck="false" placeholder="https://xxxx.supabase.co"></label>
+        <label>anon public key<input name="anonKey" autocomplete="off" spellcheck="false" placeholder="eyJhbGciOi…"></label>
+        <label>รหัสผ่านเจ้าของ (ที่ตั้งตอนรัน SQL — เก็บในเครื่องนี้เท่านั้น)<input name="pass" type="password" autocomplete="off"></label>
+        <p id="inboxStatus" class="hint"></p>
+        <p class="hint">URL และ anon key จะขึ้น GitHub (data/inbox.json) เพื่อให้เว็บของเพื่อนส่งได้ — เปิดเผยได้ ไม่ใช่ความลับ · รหัสผ่านไม่ขึ้น</p>
+      </div>
+      <footer class="sheet-foot">
+        <span class="grow"></span>
+        <button type="button" class="btn" id="inboxTest">ทดสอบ</button>
+        <button type="submit" class="btn primary">บันทึก</button>
+      </footer>
+    </form>
+  </dialog>
+
+  <dialog id="reviewDialog" class="sheet" aria-labelledby="reviewTitle">
+    <div class="sheet-inner">
+      <header class="sheet-head">
+        <h2 id="reviewTitle" class="grow">lineup จากเพื่อน</h2>
+        <button type="button" class="btn icon" data-close aria-label="ปิด">✕</button>
+      </header>
+      <div class="sheet-body">
+        <p class="muted" id="reviewInfo"></p>
+        <ul id="reviewList" class="review-list"></ul>
+      </div>
+      <footer class="sheet-foot">
+        <button type="button" class="btn sm" id="reviewAll">เลือกทั้งหมด</button>
+        <span class="grow"></span>
+        <button type="button" class="btn" data-close>ยกเลิก</button>
+        <button type="button" class="btn primary" id="reviewAccept">เพิ่มที่เลือก</button>
+      </footer>
+    </div>
+  </dialog>
 
   <dialog id="editor" class="sheet" aria-labelledby="editTitle">
     <form id="editForm" novalidate>
