@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.12.1';
+const APP_VERSION = '1.14.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -465,7 +465,12 @@ function renderMap() {
   // hovering a plan card in the plan list previews that plan on the map
   const preview = state.tab === 'plans' && !state.plan && state.hoverPlan ? plans().find((x) => x.id === state.hoverPlan) : null;
   const plan = activePlan() || preview;
-  const pool = preview ? all().filter((l) => norm(l.map) === norm(state.map) && preview.items.includes(l.id)) : visible();
+  // plan tab with nothing opened: show what every plan on this map uses
+  const allPlans = state.tab === 'plans' && !plan ? plans().filter((x) => norm(x.map) === norm(state.map)) : null;
+  const onMap = (l) => norm(l.map) === norm(state.map);
+  const pool = preview ? all().filter((l) => onMap(l) && preview.items.includes(l.id))
+    : allPlans ? all().filter((l) => onMap(l) && allPlans.some((x) => (x.items || []).includes(l.id)))
+      : visible();
   const list = pool.filter((l) => l.from || l.to).sort((a, b) => (a.id === sel) - (b.id === sel));
   for (const l of list) {
     const cls = 'side-' + (l.side || 'none') + (sel && sel !== l.id ? ' dim' : '') + (sel === l.id ? ' sel' : '');
@@ -473,12 +478,94 @@ function renderMap() {
   }
 
   // smokes placed directly in a plan (no lineup needed)
-  const smokes = state.smokePick ? state.planEdit?.smokes || [] : plan?.smokes || [];
+  const smokes = state.smokePick ? state.planEdit?.smokes || [] : plan?.smokes || (allPlans || []).flatMap((x) => x.smokes || []);
   for (const sm of smokes) pins.prepend(smokeEl(sm));
 
   const p = state.pick;
   if (p?.draft?.from) svg.append(svgEl('circle', { cx: p.draft.from.x * 1000, cy: p.draft.from.y * 1000, r: 13, class: 'tmp' }));
   $('#mapWrap').classList.toggle('picking', !!p || !!state.smokePick);
+
+  // zoom the map to whatever is chosen: a highlighted lineup, or an opened / previewed plan
+  const focus = state.pick || state.smokePick ? null
+    : sel ? list.filter((l) => l.id === sel)
+      : plan ? list : null;
+  zoomMapTo(focus && [...focus.flatMap((l) => [l.from, l.to]).filter(Boolean), ...(focus === list ? smokes : [])]);
+}
+
+/** Fit the map view around these points (0–1 coords); nothing → whole map. Icons keep their size. */
+function zoomMapTo(points) {
+  const inner = $('#mapInner'), wrap = $('#mapWrap');
+  let z = 1, tx = 0, ty = 0;
+  if (points?.length) {
+    const xs = points.map((q) => q.x), ys = points.map((q) => q.y);
+    const pad = 0.1;
+    let x0 = Math.min(...xs) - pad, x1 = Math.max(...xs) + pad, y0 = Math.min(...ys) - pad, y1 = Math.max(...ys) + pad;
+    const span = Math.max(x1 - x0, y1 - y0, 0.34); // never closer than ~3×
+    const cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    z = Math.min(3, 1 / span);
+    const W = wrap.clientWidth, H = wrap.clientHeight;
+    tx = Math.min(0, Math.max(W - W * z, W / 2 - cx * W * z));
+    ty = Math.min(0, Math.max(H - H * z, H / 2 - cy * H * z));
+  }
+  inner.style.transform = z === 1 ? '' : `translate(${tx}px, ${ty}px) scale(${z})`;
+  inner.style.setProperty('--z', z);
+  // start dots are SVG circles inside the zoomed layer: keep their on-screen size
+  for (const c of $('#mapSvg').querySelectorAll('circle')) {
+    c.dataset.r ||= c.getAttribute('r');
+    c.setAttribute('r', (+c.dataset.r / z).toFixed(2));
+  }
+  wrap.classList.toggle('zoomed', z > 1);
+}
+
+/* ---------- spike timer: 45 s from plant, with the defuse windows marked ---------- */
+
+const SPIKE = { total: 45, full: 7, half: 3.5 };
+const SPIKE_ICON = '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 4h-6zM7 7h10l2 9-7 6-7-6z" fill="currentColor" opacity=".25"/><path d="M12 2l3 4h-6zM7 7h10l2 9-7 6-7-6z" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linejoin="round"/><path d="M12 9v6M9.5 12h5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>';
+const spike = { start: 0, raf: 0, buzzed: new Set(), doneTimer: 0 };
+
+function spikeIdle() {
+  cancelAnimationFrame(spike.raf);
+  clearTimeout(spike.doneTimer);
+  spike.start = 0;
+  const box = $('#spike');
+  box.className = 'spike';
+  box.replaceChildren(el('button', { type: 'button', class: 'spike-go', title: 'เริ่มนับเวลา spike (45 วิ)', 'aria-label': 'เริ่มนับเวลา spike 45 วินาที', onclick: spikeStart }));
+  box.firstChild.innerHTML = SPIKE_ICON + '<b>45</b>';
+}
+
+function spikeStart() {
+  spike.start = performance.now();
+  spike.buzzed.clear();
+  const box = $('#spike');
+  box.className = 'spike running';
+  box.replaceChildren(
+    el('span', { class: 'spike-ic' }),
+    el('div', { class: 'spike-track' },
+      el('div', { class: 'spike-fill' }),
+      el('i', { class: 'spike-mark', style: `left:${(SPIKE.full / SPIKE.total) * 100}%`, title: 'กู้เต็มต้องเริ่มก่อน 7 วิ' }),
+      el('i', { class: 'spike-mark half', style: `left:${(SPIKE.half / SPIKE.total) * 100}%`, title: 'กู้ครึ่งต้องเริ่มก่อน 3.5 วิ' }),
+      el('span', { class: 'spike-hint' })),
+    el('b', { class: 'spike-time' }),
+    el('button', { type: 'button', class: 'spike-x', 'aria-label': 'หยุดนับเวลา', title: 'หยุด', onclick: spikeIdle }, '✕'));
+  box.querySelector('.spike-ic').innerHTML = SPIKE_ICON;
+  spikeTick();
+}
+
+function spikeTick() {
+  const left = Math.max(0, SPIKE.total - (performance.now() - spike.start) / 1000);
+  const box = $('#spike');
+  box.querySelector('.spike-fill').style.width = (left / SPIKE.total) * 100 + '%';
+  box.querySelector('.spike-time').textContent = left >= 10 ? Math.ceil(left) : left.toFixed(1);
+  const phase = left <= 0 ? 'boom' : left < SPIKE.half ? 'lost' : left < SPIKE.full ? 'half' : left < 10 ? 'warn' : 'ok';
+  box.dataset.phase = phase;
+  box.querySelector('.spike-hint').textContent = {
+    ok: '', warn: 'เตรียมกู้', half: 'กู้เต็มไม่ทัน · ต้องกู้ครึ่งไว้แล้ว', lost: 'ไม่ทันกู้แล้ว', boom: 'ระเบิด!',
+  }[phase];
+  for (const [t, ms] of [[10, 80], [SPIKE.full, 160], [0, 500]]) {
+    if (left <= t && !spike.buzzed.has(t)) { spike.buzzed.add(t); navigator.vibrate?.(ms); }
+  }
+  if (left <= 0) { spike.doneTimer = setTimeout(spikeIdle, 3000); return; }
+  spike.raf = requestAnimationFrame(spikeTick);
 }
 
 /** Touch screens: a card tap shows the quick preview at the lineup's pin first; mouse: open it straight away. */
@@ -736,10 +823,11 @@ function saveFilters() {
   store.set(LS.role, state.f.role);
 }
 
-/** Filter row under the agent row: side, site, type and agent role. */
+const activeFilters = () => ['side', 'site', 'type', 'role'].filter((k) => state.f[k] !== 'all').length;
+
+/** One "กรอง" button (next to the agent buttons) opens this panel: side, site, type and agent role. */
 function renderFilterBar() {
-  const bar = $('#filterBar');
-  bar.hidden = state.tab === 'plans' || !!activePlan();
+  const bar = $('#filterPop');
   if (bar.hidden) return;
   const sel = (key, label, options) => el('select', {
     class: 'fsel' + (state.f[key] !== 'all' ? ' on' : ''), 'aria-label': label, title: label,
@@ -753,6 +841,13 @@ function renderFilterBar() {
     sel('role', 'บทบาทเอเจนต์', [['all', 'ทุกบทบาท'], ['has', 'มี lineup'], ['controller', 'Controller'], ['duelist', 'Duelist'], ['initiator', 'Initiator'], ['sentinel', 'Sentinel']]),
     ...(active ? [el('button', { type: 'button', class: 'reset-ag', onclick: () => { Object.assign(state.f, { side: 'all', site: 'all', type: 'all', role: 'all' }); saveFilters(); render(); } }, 'ล้าง')] : []));
 }
+function filterButton() {
+  const n = activeFilters();
+  return el('button', {
+    type: 'button', class: 'reset-ag filter-btn' + (n ? ' on' : ''), 'aria-expanded': String(!$('#filterPop').hidden),
+    onclick: (e) => { e.stopPropagation(); $('#filterPop').hidden = !$('#filterPop').hidden; renderFilterBar(); e.currentTarget.setAttribute('aria-expanded', String(!$('#filterPop').hidden)); },
+  }, '⚙ กรอง', n ? el('span', { class: 'n', text: String(n) }) : null);
+}
 
 function renderList() {
   const keepTop = $('#list').scrollTop; // re-rendering must not jump the list back to the top
@@ -761,6 +856,7 @@ function renderList() {
 }
 
 function renderListInner() {
+  if (state.tab === 'plans' || activePlan()) $('#filterPop').hidden = true;
   renderFilterBar();
   if (state.tab !== 'plans' || state.plan) state.hoverPlan = null;
   const ul = $('#list');
@@ -801,6 +897,7 @@ function renderListInner() {
   const withLineups = [...new Set(all().filter((l) => norm(l.map) === norm(state.map) && l.agent).map((l) => norm(l.agent)))];
   cnt.replaceChildren(
     el('span', { class: 'grow cnt-text', text: (picked.length ? (picked.length > 2 ? `${picked.length} เอเจนต์` : agentName) : 'ทุกเอเจนต์') + ` · ${list.length} lineup` }),
+    filterButton(),
     ...(picked.length
       ? [el('button', { type: 'button', class: 'reset-ag', onclick: () => setAgents([]) }, 'ดูทุกเอเจนต์')]
       : withLineups.length > 1
@@ -2059,7 +2156,7 @@ function cancelPick() {
 
 function onMapClick(e) {
   if (state.peek && !state.pick && !state.smokePick) { closePeek(); return; }
-  const r = e.currentTarget.getBoundingClientRect();
+  const r = $('#mapInner').getBoundingClientRect(); // the zoomed layer, so taps map to the right spot
   const pt = { x: round3((e.clientX - r.left) / r.width), y: round3((e.clientY - r.top) / r.height) };
   const sp = state.smokePick;
   if (sp) {
@@ -2352,6 +2449,11 @@ function bindUi() {
   bindPlans();
   $('#mapWrap').addEventListener('click', onMapClick);
   $('#peek').addEventListener('click', (e) => e.stopPropagation()); // clicks inside the preview don't reach the map
+  $('#spike').addEventListener('click', (e) => e.stopPropagation());
+  spikeIdle();
+  $('#filterPop').addEventListener('click', (e) => e.stopPropagation());
+  document.addEventListener('click', () => { if (!$('#filterPop').hidden) { $('#filterPop').hidden = true; renderList(); } });
+  window.addEventListener('resize', () => renderMap());
 
   const menu = $('#menu');
   const menuBtn = $('#btnMenu');
@@ -2364,6 +2466,7 @@ function bindUi() {
     setMenu(false);
     if (act === 'export') exportJson();
     if (act === 'github') openGhDialog();
+    if (act === 'update') manualUpdate();
     if (act === 'publish') publish();
     if (act === 'import') $('#importFile').click();
     if (act === 'refresh') { store.del(LS.maps); store.del(LS.agents); location.reload(); }
@@ -2555,12 +2658,41 @@ async function init() {
     navigator.serviceWorker.register('sw.js').then((reg) => {
       // an installed app can stay open for hours: look for a new version when it comes back to the
       // foreground and every 10 minutes while visible, so nobody has to close and reopen it
-      const check = () => { if (document.visibilityState === 'visible') reg.update().catch(() => {}); };
+      const check = async () => {
+        if (document.visibilityState !== 'visible') return;
+        reg.update().catch(() => {});
+        // also ask the server directly (bypassing caches) which version is live; if the service worker
+        // update didn't come through, reload once for that version
+        const live = await liveVersion();
+        if (!live || live === APP_VERSION || sessionStorage.getItem('lp.reloadedFor') === live) return;
+        setTimeout(() => {
+          if (reloaded) return;
+          sessionStorage.setItem('lp.reloadedFor', live);
+          if (busy()) { pending = true; toast('มีเวอร์ชันใหม่ ' + live + ' — จะอัปเดตเมื่อปิดหน้านี้'); } else reloadNow();
+        }, 4000);
+      };
       document.addEventListener('visibilitychange', check);
       setInterval(check, 10 * 60 * 1000);
     }).catch((e) => console.warn('SW', e));
   }
   watchData();
+}
+
+/** The version currently published (from sw.js, fetched past every cache). */
+async function liveVersion() {
+  try {
+    const r = await fetch('sw.js?__v=' + Date.now(), { cache: 'no-store' });
+    return r.ok ? (/VERSION = '([^']+)'/.exec(await r.text()) || [])[1] || null : null;
+  } catch { return null; }
+}
+
+async function manualUpdate() {
+  toast('กำลังเช็กอัปเดต…');
+  const live = await liveVersion();
+  const reg = await navigator.serviceWorker?.getRegistration().catch(() => null);
+  await reg?.update().catch(() => {});
+  if (live && live === APP_VERSION) { toast(`ใช้เวอร์ชันล่าสุดอยู่แล้ว (v${APP_VERSION})`); return; }
+  setTimeout(() => location.reload(), 800);
 }
 
 /** Pick up lineups published from another device without a reload: re-read data/lineups.json when the
@@ -2572,7 +2704,7 @@ function watchData() {
     if (busyFetch || document.visibilityState !== 'visible' || location.protocol === 'file:') return;
     busyFetch = true;
     try {
-      const r = await fetch('data/lineups.json', { cache: 'no-cache' });
+      const r = await fetch('data/lineups.json?__v=' + Date.now(), { cache: 'no-store' });
       if (!r.ok) return;
       const j = await r.json();
       const arr = (Array.isArray(j) ? j : j.lineups || []).filter((x) => x && typeof x === 'object' && x.id);

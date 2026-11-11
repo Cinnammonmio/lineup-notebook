@@ -7,7 +7,7 @@
  * - คลิปวิดีโอ: ไม่แคช โหลดตอนกดดูเท่านั้น (ไฟล์ใหญ่)
  * VERSION ต้องตรงกับ APP_VERSION ใน assets/app.js — เปลี่ยนทุกครั้งที่ออกเวอร์ชันใหม่ (ล้างแคชเก่าให้เอง)
  */
-const VERSION = '1.12.1';
+const VERSION = '1.14.0';
 const SHELL = 'lp-shell-' + VERSION;
 const RUNTIME = 'lp-runtime-' + VERSION;
 const SHELL_FILES = [
@@ -21,11 +21,20 @@ const SHELL_FILES = [
   'data/lineups.json',
 ];
 
+/** Unique URL so neither the browser nor GitHub Pages' CDN (up to 10 min) can answer with an old copy. */
+const fresh = (u) => u + (u.includes('?') ? '&' : '?') + '__v=' + Date.now();
+
 self.addEventListener('install', (e) => {
-  // cache: 'reload' = ignore the browser HTTP cache so a new version never precaches old files
-  e.waitUntil(caches.open(SHELL)
-    .then((c) => c.addAll(SHELL_FILES.map((f) => new Request(f, { cache: 'reload' }))))
-    .then(() => self.skipWaiting()));
+  // precache straight from the server, stored under the clean URL
+  e.waitUntil((async () => {
+    const c = await caches.open(SHELL);
+    await Promise.all(SHELL_FILES.map(async (f) => {
+      const res = await fetch(fresh(new URL(f, self.location).href), { cache: 'no-store' });
+      if (!res.ok) throw new Error(f + ' ' + res.status);
+      await c.put(new URL(f, self.location).href, res);
+    }));
+    await self.skipWaiting();
+  })());
 });
 
 self.addEventListener('activate', (e) => {
@@ -42,7 +51,7 @@ async function networkFirst(req, cacheName) {
   const cache = await caches.open(cacheName);
   try {
     // revalidate with the server (304 when unchanged) instead of trusting the HTTP cache
-    const res = await fetch(req.url, { cache: 'no-cache', credentials: 'same-origin' });
+    const res = await fetch(fresh(req.url), { cache: 'no-store', credentials: 'same-origin' });
     if (res.ok) cache.put(req, res.clone());
     return res;
   } catch (err) {

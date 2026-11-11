@@ -26,6 +26,7 @@
       <button id="btnMenu" class="btn icon" type="button" aria-label="เมนู" aria-haspopup="true" aria-expanded="false">⋯</button>
     </div>
     <div id="menu" class="menu" hidden>
+      <button type="button" data-act="update">🔄 อัปเดตเว็บ</button>
       <button type="button" data-act="github">ตั้งค่า GitHub (บันทึกแล้วขึ้นเว็บเอง)</button>
       <button type="button" data-act="publish">ขึ้น GitHub ตอนนี้</button>
       <button type="button" data-act="export">ส่งออก (lineups.json / zip พร้อมรูป)</button>
@@ -42,12 +43,15 @@
     <section class="map-col">
       <div id="pickBanner" class="pick-banner" hidden></div>
       <div id="mapWrap" class="map-wrap">
-        <img id="mapImg" alt="" draggable="false">
+        <div id="mapInner" class="map-inner">
+          <img id="mapImg" alt="" draggable="false">
+          <svg id="mapSvg" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
+          <div id="mapNoImg" class="map-noimg" hidden>ไม่มีรูปมินิแมพ (ออฟไลน์หรือชื่อแมพไม่ตรง)</div>
+          <div id="pins" class="pins"></div>
+        </div>
         <button type="button" id="side" class="side-btn" title="แตะเพื่อสลับ ทั้งหมด → บุก → รับ"></button>
-        <svg id="mapSvg" viewBox="0 0 1000 1000" preserveAspectRatio="none" aria-hidden="true"></svg>
-        <div id="pins" class="pins"></div>
         <div id="peek" class="peek" hidden></div>
-        <div id="mapNoImg" class="map-noimg" hidden>ไม่มีรูปมินิแมพ (ออฟไลน์หรือชื่อแมพไม่ตรง)</div>
+        <div id="spike" class="spike" role="timer" aria-label="นับเวลา spike"></div>
       </div>
       <p class="legend">
         <span><i class="dot atk"></i>บุก</span>
@@ -59,8 +63,8 @@
     <section class="list-col">
       <div id="tabs" class="tabs" role="tablist" aria-label="Lineup / แผน"></div>
       <div id="agents" class="agent-row" role="group" aria-label="เลือกเอเจนต์ (เลือกได้หลายตัว)"></div>
-      <div id="filterBar" class="filter-bar" role="group" aria-label="ตัวกรอง"></div>
       <div id="count" class="count"></div>
+      <div id="filterPop" class="filter-pop" role="dialog" aria-label="ตัวกรอง" hidden></div>
       <ul id="list" class="list"><li class="empty">กำลังโหลด…</li></ul>
     </section>
   </main>
