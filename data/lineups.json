@@ -199,7 +199,29 @@
       "x": 0.755,
       "y": 0.383
     },
-    "throw": "กระโดดแล้วปา"
+    "throw": "กระโดดแล้วปา",
+    "media": [
+      {
+        "src": "media/summit/gekko-a-mosh-pit-mwb5q30qwemi-stand-vmwdd8rfh.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/summit/gekko-a-mosh-pit-mwb5q30qwemi-aim-vmwdd8rfp.webp",
+        "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/summit/gekko-a-mosh-pit-mwb5q30qwemi-aim2-vmwdd8rfu.webp",
+        "caption": "จุดเล็ง 2"
+      },
+      {
+        "src": "media/summit/gekko-a-mosh-pit-mwb5q30qwemi-result-vmwdd8rfy.webp",
+        "caption": "ผลลัพธ์"
+      }
+    ],
+    "layout": {
+      "col": 0.428,
+      "aim": 0.5
+    }
   },
   {
     "id": "mwb6dpvk2a8z",
