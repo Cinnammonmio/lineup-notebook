@@ -674,6 +674,8 @@ dialog.annot::backdrop { background: #000; }
 .sz-inner .sheet-head { padding: 0; }
 .sz-inner .sheet-foot { padding: 6px 0 0; display: flex; gap: 6px; align-items: center; }
 .sz-all { display: grid; grid-template-columns: auto 1fr 48px; gap: 8px; align-items: center; font-weight: 600; }
+.sz-map { grid-template-columns: 1fr 30px; padding: 6px 8px; border-radius: 8px; background: color-mix(in srgb, var(--accent) 10%, var(--panel2)); }
+.sz-map > .sz-all { grid-template-columns: minmax(90px, auto) 1fr 48px; }
 .sz-list { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; overscroll-behavior: contain; }
 .sz-row { display: grid; grid-template-columns: 30px 26px minmax(72px, 1fr) minmax(70px, 1fr) 42px 30px; gap: 6px; align-items: center; padding: 4px 6px; border-radius: 8px; border-left: 3px solid var(--ag, var(--line)); background: var(--panel2); }
 .sz-row.on-map { box-shadow: inset 0 0 0 1px var(--accent); }

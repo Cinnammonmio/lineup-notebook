@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.24.0';
+const APP_VERSION = '1.25.1';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -532,6 +532,7 @@ function renderMap() {
   $('#mapWrap').classList.toggle('picking', !!p || !!state.smokePick);
 
   state.drawn = { list, smokes, plan };
+  sizeDialogSync?.();
   zoomForState();
 }
 
@@ -1070,16 +1071,20 @@ const AREA_RADIUS = {
   razorvine: 650, 'cluster grenade': 450,
 };
 /* ability sizes: built-in guesses (AREA_RADIUS), overridden by data/ability-sizes.json (published by the owner)
- * and by this device's unsaved edits. File: { scale: 1, radius: { "<ability lower-case>": metres } } — 0 = no circle */
-const sizes = { scale: 1, radius: {} };
+ * and by this device's unsaved edits.
+ * File: { scale: 1, radius: { "<ability lower-case>": metres }, maps: { "<map lower-case>": factor } } — radius 0 = no circle */
+const sizes = { scale: 1, radius: {}, maps: {} };
+const obj = (v) => (v && typeof v === 'object' ? v : {});
+/** Per-map correction when a map's minimap scale from the API is off (1 = as the API says). */
+const mapFactor = (name) => +sizes.maps[norm(name)] || 1;
 async function sizesLoad() {
   try {
     const r = await fetch('data/ability-sizes.json', { cache: 'no-cache' });
     const j = r.ok ? await r.json() : null;
-    if (j) { sizes.scale = +j.scale || 1; sizes.radius = j.radius && typeof j.radius === 'object' ? j.radius : {}; }
+    if (j) { sizes.scale = +j.scale || 1; sizes.radius = obj(j.radius); sizes.maps = obj(j.maps); }
   } catch { /* keep defaults */ }
   const mine = store.get(LS.sizes, null); // edits not published yet
-  if (mine) { sizes.scale = +mine.scale || 1; sizes.radius = mine.radius || {}; }
+  if (mine) { sizes.scale = +mine.scale || 1; sizes.radius = obj(mine.radius); sizes.maps = obj(mine.maps); }
   renderMap();
 }
 /** Radius in game units (cm) after settings, or 0 when the ability has no circle. */
@@ -1092,8 +1097,9 @@ function abilityRadius(ability) {
 /** Real-size footprint (% of the map width) for a lineup's ability, or null when unknown / map scale missing. */
 function areaSize(l) {
   const r = abilityRadius(l.ability);
-  const scale = mapOf(l.map || state.map)?.scale;
-  return r && scale ? 2 * r * scale * 100 : null;
+  const name = l.map || state.map;
+  const scale = mapOf(name)?.scale;
+  return r && scale ? 2 * r * scale * mapFactor(name) * 100 : null;
 }
 /** Look of the area: fire / acid / nano / electric / smoke, else the agent colour. */
 function abilityFx(ability) {
@@ -1109,7 +1115,7 @@ function abilityFx(ability) {
 function smokeEl(sm) {
   const col = agentOf(sm.agent)?.color, ic = abilityIcon(sm.agent, sm.ability);
   const scale = mapOf(state.map)?.scale;
-  const size = scale ? 2 * (abilityRadius(sm.ability) || 420) * scale * 100 : 7; // % of the map width
+  const size = scale ? 2 * (abilityRadius(sm.ability) || 420) * scale * mapFactor(state.map) * 100 : 7; // % of the map width
   return el('span', { class: 'smoke-pin', title: `สโมก ${sm.agent} · ${sm.ability}`, style: `left:${sm.x * 100}%;top:${sm.y * 100}%;width:${size.toFixed(2)}%` + (col ? `;--ag:${col}` : '') },
     ic ? el('img', { src: ic, alt: '' }) : '☁');
 }
@@ -1352,13 +1358,21 @@ function splitMedia(list) {
 /* ---------- picture board: stand | aim columns, each with 1–2 slots; dividers are draggable ---------- */
 
 const LAYOUT_DEFAULT = { col: 0.5, stand: 0.5, aim: 0.5 };
-const RES_DEFAULT = 0.333; // share of the width for the 3rd column (result picture)
+const RES_DEFAULT = 0.3; // share of the width for the 3rd column (result picture): stand 30 : aim 40 : result 30
+const COL3_DEFAULT = 3 / 7; // stand's share of the first two columns with 3 columns (30 of 70)
+/** Layout defaults for 2 or 3 columns. A width saved before the result column existed (no 'res') isn't reused for 3. */
+function boardLayout(layout, three) {
+  const src = layout || {};
+  const lay = { ...LAYOUT_DEFAULT, col: three ? COL3_DEFAULT : 0.5, res: RES_DEFAULT, ...src };
+  if (three && src.res == null) lay.col = COL3_DEFAULT;
+  return lay;
+}
 const clampR = (v) => Math.round(Math.min(0.8, Math.max(0.2, v)) * 1000) / 1000;
 const clampRes = (v) => Math.round(Math.min(0.6, Math.max(0.15, v)) * 1000) / 1000;
 
 /** cols: [{ key: 'stand'|'aim'|'result', top: Node, bottom: Node|null }] (2 or 3) · layout: { col, stand, aim, res } · onChange(layout) after a drag */
 function makeBoard(cols, layout, onChange) {
-  const lay = { ...LAYOUT_DEFAULT, res: RES_DEFAULT, ...layout };
+  const lay = boardLayout(layout, cols.length > 2);
   const root = el('div', { class: 'board' });
   const drag = (handle, axis, box, apply) => {
     handle.addEventListener('pointerdown', (e) => {
@@ -1939,12 +1953,13 @@ function readForm() {
   d.steps = f.steps.value.trim();
   d.throw = readThrow();
   d.tags = f.tags.value.split(',').map((x) => x.trim()).filter(Boolean);
-  const lay = { ...LAYOUT_DEFAULT, ...state.editing.layout };
-  const used = { col: true, stand: !!state.editing.shots.stand2, aim: !!state.editing.shots.aim2 };
-  const changed = Object.keys(LAYOUT_DEFAULT).some((k) => used[k] && Math.abs(lay[k] - 0.5) > 0.01);
-  const out = changed ? Object.fromEntries(Object.keys(LAYOUT_DEFAULT).filter((k) => used[k]).map((k) => [k, clampR(lay[k])])) : {};
-  if (state.editing.shots.result && lay.res != null && Math.abs(lay.res - RES_DEFAULT) > 0.01) out.res = clampRes(lay.res);
-  d.layout = Object.keys(out).length ? out : undefined;
+  const three = !!state.editing.shots.result;
+  const def = boardLayout({}, three);
+  const lay = boardLayout(state.editing.layout, three);
+  const used = { col: true, stand: !!state.editing.shots.stand2, aim: !!state.editing.shots.aim2, res: three };
+  const changed = Object.keys(def).some((k) => used[k] && Math.abs(lay[k] - def[k]) > 0.01);
+  // save only when moved from the default; with 3 columns col + res always go together (see boardLayout)
+  d.layout = changed ? Object.fromEntries(Object.keys(def).filter((k) => used[k]).map((k) => [k, k === 'res' ? clampRes(lay[k]) : clampR(lay[k])])) : undefined;
   return d;
 }
 const readRestMedia = () => $('#editForm').elements.media.value.split('\n').map((x) => x.trim()).filter(Boolean).map((x) => {
@@ -2658,6 +2673,7 @@ function sizeAbilities() {
   return [...seen.values()].sort((a, b) => (norm(a.agent) === norm(b.agent) ? 0 : a.agent.localeCompare(b.agent)) || a.ability.localeCompare(b.ability));
 }
 
+let sizeDialogSync = null;
 function openSizeDialog() {
   const d = $('#sizeDialog');
   const before = JSON.stringify(sizes);
@@ -2669,6 +2685,28 @@ function openSizeDialog() {
   const scaleIn = el('input', { type: 'range', min: '0.5', max: '2', step: '0.01', value: String(sizes.scale || 1) });
   const scaleOut = el('output', { text: '×' + (sizes.scale || 1).toFixed(2) });
   scaleIn.addEventListener('input', () => { sizes.scale = +scaleIn.value; scaleOut.textContent = '×' + sizes.scale.toFixed(2); live(); });
+
+  // this map's scale correction; follows the map when another one is picked while the panel is open
+  const mapIn = el('input', { type: 'range', min: '0.5', max: '2', step: '0.01' });
+  const mapOut = el('output');
+  const mapName = el('span');
+  const syncMap = () => {
+    const f = mapFactor(state.map);
+    mapName.textContent = 'สเกลแมพ ' + (state.map || '—');
+    mapIn.value = String(f);
+    mapOut.textContent = '×' + f.toFixed(2);
+  };
+  mapIn.addEventListener('input', () => {
+    const k = norm(state.map);
+    if (!k) return;
+    if (Math.abs(+mapIn.value - 1) < 0.005) delete sizes.maps[k]; else sizes.maps[k] = +mapIn.value;
+    mapOut.textContent = '×' + mapFactor(state.map).toFixed(2);
+    live();
+  });
+  syncMap();
+  sizeDialogSync = syncMap;
+  const mapRow = el('div', { class: 'sz-all sz-map' }, el('label', { class: 'sz-all' }, mapName, mapIn, mapOut),
+    el('button', { type: 'button', class: 'btn icon sm', title: 'สเกลแมพนี้ = ตามข้อมูลแมพ', 'aria-label': 'รีเซ็ตสเกลแมพนี้', onclick: () => { delete sizes.maps[norm(state.map)]; syncMap(); live(); } }, '↺'));
 
   const rows = sizeAbilities().map(({ agent, ability }) => {
     const k = norm(ability);
@@ -2690,6 +2728,7 @@ function openSizeDialog() {
 
   const close = (keep) => {
     if (!keep) Object.assign(sizes, JSON.parse(before));
+    sizeDialogSync = null;
     d.close();
     live();
   };
@@ -2697,17 +2736,22 @@ function openSizeDialog() {
     el('header', { class: 'sheet-head' },
       el('h2', { class: 'grow', text: 'ขนาดสกิลบนแมพ' }),
       el('button', { type: 'button', class: 'btn icon', 'aria-label': 'ปิด', onclick: () => close(false) }, '✕')),
-    el('p', { class: 'hint', text: 'รัศมีเป็นเมตร (0 = ไม่แสดงวง) · ดูผลบนแมพได้ทันที · ไฮไลต์ = มีในแมพนี้' }),
+    el('p', { class: 'hint', text: 'รัศมีเป็นเมตร (0 = ไม่แสดงวง) · ดูผลบนแมพได้ทันที · ไฮไลต์ = มีในแมพนี้ · สเกลแมพ: ใช้เมื่อวงเพี้ยนเฉพาะแมพนี้ (เปลี่ยนแมพได้ขณะเปิดหน้านี้)' }),
+    mapRow,
     el('label', { class: 'sz-all' }, el('span', { text: 'ปรับทุกสกิล' }), scaleIn, scaleOut),
     el('div', { class: 'sz-list' }, rows.length ? rows : el('p', { class: 'muted', text: 'ยังไม่มี lineup' })),
     el('footer', { class: 'sheet-foot' },
-      el('button', { type: 'button', class: 'btn', onclick: () => { sizes.scale = 1; sizes.radius = {}; d.close(); openSizeDialog(); live(); } }, 'ค่าเริ่มต้นทั้งหมด'),
+      el('button', { type: 'button', class: 'btn', onclick: () => { sizes.scale = 1; sizes.radius = {}; sizes.maps = {}; d.close(); openSizeDialog(); live(); } }, 'ค่าเริ่มต้นทั้งหมด'),
       el('span', { class: 'grow' }),
       el('button', { type: 'button', class: 'btn', onclick: () => close(false) }, 'ยกเลิก'),
       el('button', {
         type: 'button', class: 'btn primary',
         onclick: () => {
-          const clean = { scale: Math.round((sizes.scale || 1) * 100) / 100, radius: Object.fromEntries(Object.entries(sizes.radius).map(([k, v]) => [k, Math.round(v * 10) / 10])) };
+          const clean = {
+            scale: Math.round((sizes.scale || 1) * 100) / 100,
+            radius: Object.fromEntries(Object.entries(sizes.radius).map(([k, v]) => [k, Math.round(v * 10) / 10])),
+            maps: Object.fromEntries(Object.entries(sizes.maps).map(([k, v]) => [k, Math.round(v * 100) / 100]).filter(([, v]) => v !== 1)),
+          };
           Object.assign(sizes, clean);
           close(true);
           if (ghReady()) {
