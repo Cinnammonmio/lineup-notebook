@@ -612,7 +612,59 @@ dialog.annot::backdrop { background: #000; }
 }
 .area.dim { opacity: .3; }
 .area.sel, .area.hl { background: color-mix(in srgb, var(--ag, #9aa) 40%, transparent); border-width: 2px; }
-.pin.with-area { width: 26px; height: 26px; padding: 3px; border-width: 1.5px; background: #0b0e13d9; }
+/* area looks (own gradients, not game art): fire, acid, nano, electric; smokes/plain use the agent colour */
+.area.fx-fire {
+  border: 0; box-shadow: 0 0 10px #ff6a2a88;
+  background:
+    radial-gradient(circle at 38% 40%, #ffd27a55 0 8%, transparent 9%),
+    radial-gradient(circle at 64% 62%, #ffb04a55 0 6%, transparent 7%),
+    radial-gradient(circle, #2a1650 0%, #5b2177 34%, #c2412f 66%, #ff8a3a 86%, #ffb45a00 100%);
+}
+.area.fx-acid {
+  border: 0; box-shadow: 0 0 10px #6fdc3c77;
+  background:
+    radial-gradient(circle at 30% 35%, #c8ff7a66 0 7%, transparent 8%),
+    radial-gradient(circle at 66% 58%, #b4f56a55 0 9%, transparent 10%),
+    radial-gradient(circle at 48% 74%, #d6ff8f44 0 5%, transparent 6%),
+    radial-gradient(circle, #6ccf3a 0%, #3f9e25 58%, #2b7c19 86%, #2b7c1900 100%);
+}
+.area.fx-nano {
+  border: 0; box-shadow: 0 0 10px #e58cff88;
+  background:
+    radial-gradient(circle at 50% 50%, #7fd8ff 0 4%, transparent 5%),
+    radial-gradient(circle, #f3b4ff 0%, #d47cf0 55%, #b04fd6 84%, #b04fd600 100%);
+}
+.area.fx-zap {
+  border: 0; box-shadow: 0 0 10px #6ab8ff88;
+  background:
+    repeating-conic-gradient(from 0deg, #bfe4ff33 0 6deg, transparent 6deg 24deg),
+    radial-gradient(circle, #d8f0ff 0%, #6aa8ff 45%, #3d63d6 82%, #3d63d600 100%);
+}
+.area.fx-fire, .area.fx-acid, .area.fx-nano, .area.fx-zap { opacity: .85; }
+.area.fx-fire.dim, .area.fx-acid.dim, .area.fx-nano.dim, .area.fx-zap.dim { opacity: .3; }
+.area.fx-fire.sel, .area.fx-acid.sel, .area.fx-nano.sel, .area.fx-zap.sel { opacity: 1; outline: 2px solid #fff8; outline-offset: -1px; }
+
+/* ability size settings: floating panel, the map stays visible for the live preview */
+#sizeDialog {
+  position: fixed; inset: 12px 12px auto auto; margin: 0; padding: 0; z-index: 50;
+  width: min(400px, calc(100vw - 24px)); max-height: calc(var(--app-h) - 24px);
+  background: var(--panel); color: var(--text); border: 1px solid var(--line); border-radius: 14px; box-shadow: 0 12px 40px #000a;
+}
+#sizeDialog[open] { display: flex; }
+.sz-inner { display: flex; flex-direction: column; min-height: 0; width: 100%; padding: 10px 12px; gap: 8px; }
+.sz-inner .sheet-head { padding: 0; }
+.sz-inner .sheet-foot { padding: 6px 0 0; display: flex; gap: 6px; align-items: center; }
+.sz-all { display: grid; grid-template-columns: auto 1fr 48px; gap: 8px; align-items: center; font-weight: 600; }
+.sz-list { overflow-y: auto; min-height: 0; display: flex; flex-direction: column; gap: 4px; overscroll-behavior: contain; }
+.sz-row { display: grid; grid-template-columns: 28px minmax(0, 1fr) minmax(80px, 140px) 50px 30px; gap: 8px; align-items: center; padding: 4px 6px; border-radius: 8px; border-left: 3px solid var(--ag, var(--line)); background: var(--panel2); }
+.sz-row.on-map { box-shadow: inset 0 0 0 1px var(--accent); }
+.sz-row img, .sz-noic { width: 28px; height: 28px; object-fit: contain; display: grid; place-items: center; }
+.sz-name { display: flex; flex-direction: column; min-width: 0; line-height: 1.2; }
+.sz-name b, .sz-name small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.sz-name small { color: var(--muted); font-size: 11px; }
+.sz-row output, .sz-all output { font-size: 12px; text-align: right; color: var(--muted); }
+.sz-row input[type=range], .sz-all input[type=range] { width: 100%; accent-color: var(--accent); min-height: 0; padding: 0; }
+.pin.with-area { width: 22px; height: 22px; padding: 2px; border-width: 1.5px; background: #0b0e13d9; }
 .plan-smokes { display: flex; flex-wrap: wrap; gap: 6px; }
 .smoke-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 6px; border-radius: 999px; border: 1px solid var(--ag, var(--line)); background: color-mix(in srgb, var(--ag, #888) 14%, var(--panel2)); font-size: 13px; color: var(--text); }
 .smoke-chip img { width: 20px; height: 20px; object-fit: contain; }

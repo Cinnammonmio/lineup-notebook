@@ -28,6 +28,7 @@
     </div>
     <div id="menu" class="menu" hidden>
       <button type="button" data-act="update">🔄 อัปเดตเว็บ</button>
+      <button type="button" data-act="sizes">⭕ ขนาดสกิลบนแมพ</button>
       <button type="button" data-act="github">ตั้งค่า GitHub (บันทึกแล้วขึ้นเว็บเอง)</button>
       <button type="button" data-act="publish">ขึ้น GitHub ตอนนี้</button>
       <button type="button" data-act="export">ส่งออก (lineups.json / zip พร้อมรูป)</button>
@@ -202,6 +203,8 @@
   </dialog>
   <input type="file" id="shotFile" accept="image/*" hidden>
   <input type="file" id="receiveFile" accept="application/json,.json" hidden>
+
+  <dialog id="sizeDialog" aria-label="ขนาดสกิลบนแมพ"></dialog>
 
   <dialog id="inboxDialog" class="sheet" aria-labelledby="inboxTitle">
     <form id="inboxForm" class="sheet-inner" novalidate>

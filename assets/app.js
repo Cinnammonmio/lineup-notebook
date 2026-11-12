@@ -8,13 +8,14 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.21.0';
+const APP_VERSION = '1.22.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
 const API_TTL = 3 * 24 * 3600 * 1000;
 
 const LS = {
+  sizes: 'lp.abilitySizes',
   local: 'lp.local.v1',
   practiced: 'lp.practiced.v1',
   lastMap: 'lp.lastMap',
@@ -474,7 +475,7 @@ function lineEls(l, cls, svg, pins, interactive, num) {
     const icon = iconFor(l);
     const area = areaSize(l);
     // real-size area of the ability where it lands (behind every pin), with the icon in its middle
-    if (area) pins.prepend(el('span', { class: 'area ' + cls, 'data-id': id, style: `left:${l.to.x * 100}%;top:${l.to.y * 100}%;width:${area.toFixed(2)}%` + (col ? `;--ag:${col}` : '') }));
+    if (area) pins.prepend(el('span', { class: `area fx-${abilityFx(l.ability)} ` + cls, 'data-id': id, style: `left:${l.to.x * 100}%;top:${l.to.y * 100}%;width:${area.toFixed(2)}%` + (col ? `;--ag:${col}` : '') }));
     pins.append(el(interactive ? 'button' : 'span', {
       type: interactive ? 'button' : null,
       class: 'pin ' + cls + (area ? ' with-area' : ''), 'data-id': id,
@@ -1062,17 +1063,47 @@ const AREA_RADIUS = {
   'nova pulse': 475, 'gravity well': 475, meddle: 450, seize: 450, 'special delivery': 400, 'guided salvo': 400,
   razorvine: 650, 'cluster grenade': 450,
 };
+/* ability sizes: built-in guesses (AREA_RADIUS), overridden by data/ability-sizes.json (published by the owner)
+ * and by this device's unsaved edits. File: { scale: 1, radius: { "<ability lower-case>": metres } } — 0 = no circle */
+const sizes = { scale: 1, radius: {} };
+async function sizesLoad() {
+  try {
+    const r = await fetch('data/ability-sizes.json', { cache: 'no-cache' });
+    const j = r.ok ? await r.json() : null;
+    if (j) { sizes.scale = +j.scale || 1; sizes.radius = j.radius && typeof j.radius === 'object' ? j.radius : {}; }
+  } catch { /* keep defaults */ }
+  const mine = store.get(LS.sizes, null); // edits not published yet
+  if (mine) { sizes.scale = +mine.scale || 1; sizes.radius = mine.radius || {}; }
+  renderMap();
+}
+/** Radius in game units (cm) after settings, or 0 when the ability has no circle. */
+function abilityRadius(ability) {
+  const k = norm(ability);
+  const m = sizes.radius[k];
+  const cm = m != null ? m * 100 : (AREA_RADIUS[k] || 0);
+  return cm * (sizes.scale || 1);
+}
 /** Real-size footprint (% of the map width) for a lineup's ability, or null when unknown / map scale missing. */
 function areaSize(l) {
-  const r = AREA_RADIUS[norm(l.ability)];
+  const r = abilityRadius(l.ability);
   const scale = mapOf(l.map || state.map)?.scale;
   return r && scale ? 2 * r * scale * 100 : null;
+}
+/** Look of the area: fire / acid / nano / electric / smoke, else the agent colour. */
+function abilityFx(ability) {
+  const a = norm(ability);
+  if (/incendiary|hot hands|blaze|paint shells|molly/.test(a)) return 'fire';
+  if (/snake bite|mosh pit|toxic|acid/.test(a)) return 'acid';
+  if (/nanoswarm|razorvine|swarm/.test(a)) return 'nano';
+  if (/shock|nova|gravity|frag|aftershock|gravnet|seize|meddle|salvo|delivery|cluster|stim/.test(a)) return 'zap';
+  if (SMOKE_RE.test(ability || '')) return 'smoke';
+  return 'plain';
 }
 
 function smokeEl(sm) {
   const col = agentOf(sm.agent)?.color, ic = abilityIcon(sm.agent, sm.ability);
   const scale = mapOf(state.map)?.scale;
-  const size = scale ? 2 * (SMOKE_RADIUS[norm(sm.ability)] || 420) * scale * 100 : 7; // % of the map width
+  const size = scale ? 2 * (abilityRadius(sm.ability) || 420) * scale * 100 : 7; // % of the map width
   return el('span', { class: 'smoke-pin', title: `สโมก ${sm.agent} · ${sm.ability}`, style: `left:${sm.x * 100}%;top:${sm.y * 100}%;width:${size.toFixed(2)}%` + (col ? `;--ag:${col}` : '') },
     ic ? el('img', { src: ic, alt: '' }) : '☁');
 }
@@ -2609,6 +2640,83 @@ async function acceptReview() {
 const inbox = { cfg: null, count: 0 };
 const inboxPass = () => store.get('lp.inboxPass', '');
 
+/* ---------- ability size settings (live preview on the map) ---------- */
+
+function sizeAbilities() {
+  const seen = new Map();
+  const add = (agent, ability) => { const k = norm(ability); if (k && !seen.has(k)) seen.set(k, { agent, ability }); };
+  for (const l of all()) add(l.agent, l.ability);
+  for (const p of plans()) for (const sm of p.smokes || []) add(sm.agent, sm.ability);
+  // abilities with a built-in size whose agent is known, so they can be tuned before any lineup uses them
+  for (const a of state.agents) for (const x of a.abilities || []) if (AREA_RADIUS[norm(x.name)]) add(a.name, x.name);
+  return [...seen.values()].sort((a, b) => (norm(a.agent) === norm(b.agent) ? 0 : a.agent.localeCompare(b.agent)) || a.ability.localeCompare(b.ability));
+}
+
+function openSizeDialog() {
+  const d = $('#sizeDialog');
+  const before = JSON.stringify(sizes);
+  const onMap = new Set(all().filter((l) => norm(l.map) === norm(state.map)).map((l) => norm(l.ability)));
+  const metres = (k) => (sizes.radius[k] != null ? sizes.radius[k] : (AREA_RADIUS[k] || 0) / 100);
+  const live = () => renderMap();
+  const fmt = (v) => (v ? v.toFixed(1) + ' ม.' : 'ปิด');
+
+  const scaleIn = el('input', { type: 'range', min: '0.5', max: '2', step: '0.01', value: String(sizes.scale || 1) });
+  const scaleOut = el('output', { text: '×' + (sizes.scale || 1).toFixed(2) });
+  scaleIn.addEventListener('input', () => { sizes.scale = +scaleIn.value; scaleOut.textContent = '×' + sizes.scale.toFixed(2); live(); });
+
+  const rows = sizeAbilities().map(({ agent, ability }) => {
+    const k = norm(ability);
+    const icon = abilityIcon(agent, ability);
+    const input = el('input', { type: 'range', min: '0', max: '12', step: '0.1', value: String(metres(k)) });
+    const out = el('output', { text: fmt(metres(k)) });
+    const row = el('div', { class: 'sz-row' + (onMap.has(k) ? ' on-map' : ''), style: agentOf(agent)?.color ? `--ag:${agentOf(agent).color}` : null },
+      icon ? el('img', { src: icon, alt: '' }) : el('span', { class: 'sz-noic', text: '◆' }),
+      el('span', { class: 'sz-name' }, el('b', { text: ability }), el('small', { text: agent || '' })),
+      input, out,
+      el('button', {
+        type: 'button', class: 'btn icon sm', title: 'ค่าเริ่มต้น', 'aria-label': 'ค่าเริ่มต้น ' + ability,
+        onclick: () => { delete sizes.radius[k]; input.value = String(metres(k)); out.textContent = fmt(metres(k)); live(); },
+      }, '↺'));
+    input.addEventListener('input', () => { sizes.radius[k] = +input.value; out.textContent = fmt(+input.value); live(); });
+    return row;
+  });
+
+  const close = (keep) => {
+    if (!keep) Object.assign(sizes, JSON.parse(before));
+    d.close();
+    live();
+  };
+  d.replaceChildren(el('div', { class: 'sz-inner' },
+    el('header', { class: 'sheet-head' },
+      el('h2', { class: 'grow', text: 'ขนาดสกิลบนแมพ' }),
+      el('button', { type: 'button', class: 'btn icon', 'aria-label': 'ปิด', onclick: () => close(false) }, '✕')),
+    el('p', { class: 'hint', text: 'รัศมีเป็นเมตร (0 = ไม่แสดงวง) · ดูผลบนแมพได้ทันที · ไฮไลต์ = มีในแมพนี้' }),
+    el('label', { class: 'sz-all' }, el('span', { text: 'ปรับทุกสกิล' }), scaleIn, scaleOut),
+    el('div', { class: 'sz-list' }, rows.length ? rows : el('p', { class: 'muted', text: 'ยังไม่มี lineup' })),
+    el('footer', { class: 'sheet-foot' },
+      el('button', { type: 'button', class: 'btn', onclick: () => { sizes.scale = 1; sizes.radius = {}; d.close(); openSizeDialog(); live(); } }, 'ค่าเริ่มต้นทั้งหมด'),
+      el('span', { class: 'grow' }),
+      el('button', { type: 'button', class: 'btn', onclick: () => close(false) }, 'ยกเลิก'),
+      el('button', {
+        type: 'button', class: 'btn primary',
+        onclick: () => {
+          const clean = { scale: Math.round((sizes.scale || 1) * 100) / 100, radius: Object.fromEntries(Object.entries(sizes.radius).map(([k, v]) => [k, Math.round(v * 10) / 10])) };
+          Object.assign(sizes, clean);
+          close(true);
+          if (ghReady()) {
+            store.del(LS.sizes);
+            gh.extraFiles['data/ability-sizes.json'] = JSON.stringify(clean, null, 2) + '\n';
+            publish({ quiet: true });
+            toast('บันทึกแล้ว — กำลังขึ้น GitHub (ทุกเครื่องเห็นขนาดนี้)');
+          } else {
+            store.set(LS.sizes, clean);
+            toast('บันทึกในเครื่องนี้แล้ว (ตั้ง GitHub เพื่อให้ทุกเครื่องเห็น)');
+          }
+        },
+      }, 'บันทึก'))));
+  d.show(); // not modal: the map stays visible for the live preview
+}
+
 async function inboxLoad() {
   try {
     const r = await fetch('data/inbox.json', { cache: 'no-cache' });
@@ -2845,6 +2953,7 @@ function bindUi() {
     if (act === 'receive') { if (inbox.cfg && inboxPass()) inboxOpen(); else $('#receiveFile').click(); }
     if (act === 'receiveFile') $('#receiveFile').click();
     if (act === 'inbox') openInboxDialog();
+    if (act === 'sizes') openSizeDialog();
     if (act === 'refresh') { store.del(LS.maps); store.del(LS.agents); location.reload(); }
     if (act === 'reset') {
       const n = Object.keys(state.local).length;
@@ -3057,6 +3166,7 @@ async function init() {
   }
   watchData();
   inboxLoad();
+  sizesLoad();
 }
 
 /** The version currently published (from sw.js, fetched past every cache). */
