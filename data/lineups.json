@@ -643,5 +643,30 @@
         "caption": "ผลลัพธ์"
       }
     ]
+  },
+  {
+    "id": "mwdj95vfg2fq",
+    "title": "Nanoswarm B · Retake",
+    "map": "Summit",
+    "agent": "Killjoy",
+    "ability": "Nanoswarm",
+    "side": "attack",
+    "site": "B",
+    "type": "retake",
+    "from": {
+      "x": 0.283,
+      "y": 0.592
+    },
+    "to": {
+      "x": 0.142,
+      "y": 0.338
+    },
+    "throw": "ปาปกติ",
+    "media": [
+      {
+        "src": "media/summit/killjoy-b-nanoswarm-mwdj95vfg2fq-stand-vmwdj95vf.webp",
+        "caption": "จุดยืน"
+      }
+    ]
   }
 ]
