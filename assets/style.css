@@ -840,3 +840,7 @@ dialog.annot::backdrop { background: #000; }
 
 .inbox-badge { color: #9fd3ff; border-color: #9fd3ff66; background: #9fd3ff14; }
 #inboxDialog.sheet { width: min(560px, calc(100% - 32px)); }
+
+/* team room badge (spike timer shared) */
+.team-badge { background: color-mix(in srgb, var(--accent) 18%, var(--panel2)); border-color: var(--accent); color: var(--text); }
+.team-badge.off { opacity: .6; border-style: dashed; }
