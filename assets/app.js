@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.20.0';
+const APP_VERSION = '1.21.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -472,9 +472,12 @@ function lineEls(l, cls, svg, pins, interactive, num) {
   if (l.from) svg.append(svgEl('circle', { cx: l.from.x * 1000, cy: l.from.y * 1000, r: 11, class: 'st ' + cls, 'data-id': id, style: col ? `fill:${col}` : null }));
   if (l.to) {
     const icon = iconFor(l);
+    const area = areaSize(l);
+    // real-size area of the ability where it lands (behind every pin), with the icon in its middle
+    if (area) pins.prepend(el('span', { class: 'area ' + cls, 'data-id': id, style: `left:${l.to.x * 100}%;top:${l.to.y * 100}%;width:${area.toFixed(2)}%` + (col ? `;--ag:${col}` : '') }));
     pins.append(el(interactive ? 'button' : 'span', {
       type: interactive ? 'button' : null,
-      class: 'pin ' + cls, 'data-id': id,
+      class: 'pin ' + cls + (area ? ' with-area' : ''), 'data-id': id,
       style: `left:${l.to.x * 100}%;top:${l.to.y * 100}%` + (col ? `;--ag:${col}` : ''),
       title: l.title || '',
       'aria-label': interactive ? (l.title || 'lineup') : null,
@@ -540,7 +543,7 @@ function zoomForState() {
 /** Change the highlighted lineup without rebuilding the page (rebuilding made every icon flicker). */
 function applySelection() {
   const sel = state.selected;
-  for (const n of document.querySelectorAll('#mapSvg [data-id], #pins .pin[data-id]')) {
+  for (const n of document.querySelectorAll('#mapSvg [data-id], #pins .pin[data-id], #pins .area[data-id]')) {
     const id = n.getAttribute('data-id');
     n.classList.toggle('dim', !!sel && id !== sel);
     n.classList.toggle('sel', id === sel);
@@ -1051,6 +1054,21 @@ const SMOKE_RADIUS = {
   'sky smoke': 415, 'dark cover': 410, nebula: 475, 'poison cloud': 450, 'toxic screen': 300,
   cove: 450, cascade: 300, 'high tide': 300, ruse: 410, cloudburst: 335, 'cyber cage': 360,
 };
+/** Approximate radius (game units = cm) of abilities that cover an area where they land; drawn to scale on the map. */
+const AREA_RADIUS = {
+  ...SMOKE_RADIUS,
+  incendiary: 450, 'snake bite': 450, 'hot hands': 450, nanoswarm: 450, 'frag/ment': 400, fragment: 400,
+  'mosh pit': 650, gravnet: 650, aftershock: 350, 'shock bolt': 400, 'paint shells': 450, 'stim beacon': 600,
+  'nova pulse': 475, 'gravity well': 475, meddle: 450, seize: 450, 'special delivery': 400, 'guided salvo': 400,
+  razorvine: 650, 'cluster grenade': 450,
+};
+/** Real-size footprint (% of the map width) for a lineup's ability, or null when unknown / map scale missing. */
+function areaSize(l) {
+  const r = AREA_RADIUS[norm(l.ability)];
+  const scale = mapOf(l.map || state.map)?.scale;
+  return r && scale ? 2 * r * scale * 100 : null;
+}
+
 function smokeEl(sm) {
   const col = agentOf(sm.agent)?.color, ic = abilityIcon(sm.agent, sm.ability);
   const scale = mapOf(state.map)?.scale;

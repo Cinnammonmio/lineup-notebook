@@ -604,6 +604,15 @@ dialog.annot::backdrop { background: #000; }
 }
 .smoke-pin img { width: 42%; height: 42%; object-fit: contain; filter: drop-shadow(0 1px 2px #000); }
 .plan-ic.smoke { border-style: dashed; border-radius: 50%; }
+/* lineup ability area at real size (scales with the map zoom, unlike pins) */
+.area {
+  position: absolute; transform: translate(-50%, -50%); aspect-ratio: 1; border-radius: 50%; pointer-events: none;
+  background: color-mix(in srgb, var(--ag, #9aa) 26%, transparent); border: 1.5px solid color-mix(in srgb, var(--ag, #9aa) 85%, transparent);
+  transition: opacity .12s;
+}
+.area.dim { opacity: .3; }
+.area.sel, .area.hl { background: color-mix(in srgb, var(--ag, #9aa) 40%, transparent); border-width: 2px; }
+.pin.with-area { width: 26px; height: 26px; padding: 3px; border-width: 1.5px; background: #0b0e13d9; }
 .plan-smokes { display: flex; flex-wrap: wrap; gap: 6px; }
 .smoke-chip { display: inline-flex; align-items: center; gap: 6px; padding: 3px 4px 3px 6px; border-radius: 999px; border: 1px solid var(--ag, var(--line)); background: color-mix(in srgb, var(--ag, #888) 14%, var(--panel2)); font-size: 13px; color: var(--text); }
 .smoke-chip img { width: 20px; height: 20px; object-fit: contain; }
