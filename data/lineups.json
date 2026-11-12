@@ -715,5 +715,42 @@
         "caption": "ผลลัพธ์"
       }
     ]
+  },
+  {
+    "id": "mwdn6ozsor5a",
+    "title": "Nanoswarm B · Hold",
+    "map": "Corrode",
+    "agent": "Killjoy",
+    "ability": "Nanoswarm",
+    "side": "defense",
+    "site": "B",
+    "type": "hold",
+    "from": {
+      "x": 0.334,
+      "y": 0.851
+    },
+    "to": {
+      "x": 0.521,
+      "y": 0.696
+    },
+    "throw": "ปาปกติ",
+    "media": [
+      {
+        "src": "media/corrode/killjoy-b-nanoswarm-mwdn6ozsor5a-stand-vmwdn6ozs.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/corrode/killjoy-b-nanoswarm-mwdn6ozsor5a-aim-vmwdn6ozz.webp",
+        "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/corrode/killjoy-b-nanoswarm-mwdn6ozsor5a-aim2-vmwdn6p04.webp",
+        "caption": "จุดเล็ง 2"
+      },
+      {
+        "src": "media/corrode/killjoy-b-nanoswarm-mwdn6ozsor5a-result-vmwdn6p08.webp",
+        "caption": "ผลลัพธ์"
+      }
+    ]
   }
 ]
