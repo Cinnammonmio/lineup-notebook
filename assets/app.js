@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.23.1';
+const APP_VERSION = '1.24.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -631,12 +631,13 @@ function spikeIdle() {
   spikeSetFull(false);
   const box = $('#spike');
   box.className = 'spike';
-  box.replaceChildren(el('button', { type: 'button', class: 'spike-go', title: 'เริ่มนับเวลา spike (45 วิ)', 'aria-label': 'เริ่มนับเวลา spike 45 วินาที', onclick: spikeStart }));
+  box.replaceChildren(el('button', { type: 'button', class: 'spike-go', title: 'เริ่มนับเวลา spike (45 วิ)', 'aria-label': 'เริ่มนับเวลา spike 45 วินาที', onclick: () => { spikeStart(); teamSend('start', { elapsed: 0 }); } }));
   box.firstChild.innerHTML = spikeIconHtml() + '<b>45</b>';
 }
 
-function spikeStart() {
-  spike.start = performance.now();
+/** elapsed: ms already passed since the plant (when the start came from a teammate). */
+function spikeStart(elapsed = 0) {
+  spike.start = performance.now() - elapsed;
   spike.buzzed.clear();
   const box = $('#spike');
   box.className = 'spike running';
@@ -649,7 +650,7 @@ function spikeStart() {
       el('span', { class: 'spike-hint' })),
     el('b', { class: 'spike-time' }),
     el('button', { type: 'button', class: 'spike-min', 'aria-label': 'ย่อ', title: 'ย่อเป็นแถบเล็ก', onclick: () => { spike.mini = true; spikeSetFull(false); } }, 'ย่อ'),
-    el('button', { type: 'button', class: 'spike-x', 'aria-label': 'หยุดนับเวลา', title: 'หยุด', onclick: spikeIdle }, '✕'));
+    el('button', { type: 'button', class: 'spike-x', 'aria-label': 'หยุดนับเวลา', title: 'หยุด', onclick: () => { spikeIdle(); teamSend('stop'); } }, '✕'));
   box.querySelector('.spike-ic').innerHTML = spikeIconHtml();
   spikeTick();
 }
@@ -2723,6 +2724,105 @@ function openSizeDialog() {
   d.show(); // not modal: the map stays visible for the live preview
 }
 
+/* ---------- team room: everyone in the same room shares the spike timer (Supabase Realtime broadcast) ----------
+ * Plain WebSocket (Phoenix protocol), no SDK. Starts carry the time already elapsed, so a slow phone clock doesn't matter;
+ * someone who joins late asks ('hello') and a running timer answers with its elapsed time. */
+const team = { room: store.get('lp.teamRoom', ''), ws: null, ref: 0, joinRef: null, hb: 0, retry: 0, retryTimer: 0, joined: false, members: new Set(), me: Math.random().toString(36).slice(2, 10) };
+const teamTopic = () => 'realtime:arc-team-' + team.room;
+
+function teamConnect() {
+  clearTimeout(team.retryTimer);
+  if (team.ws) { const w = team.ws; team.ws = null; try { w.close(); } catch { /* ignore */ } }
+  team.joined = false; team.members.clear();
+  renderTeamBadge();
+  if (!team.room || !inbox.cfg || !('WebSocket' in window)) return;
+  const { url, anonKey } = inbox.cfg;
+  const ws = new WebSocket(`${url.replace(/^http/, 'ws')}/realtime/v1/websocket?apikey=${encodeURIComponent(anonKey)}&vsn=1.0.0`);
+  team.ws = ws;
+  const send = (topic, event, payload) => { if (ws.readyState === 1) ws.send(JSON.stringify({ topic, event, payload, ref: String(++team.ref) })); return String(team.ref); };
+  ws.onopen = () => {
+    team.retry = 0;
+    team.joinRef = send(teamTopic(), 'phx_join', { config: { broadcast: { self: false, ack: false }, presence: { key: team.me }, private: false }, access_token: anonKey });
+    clearInterval(team.hb);
+    team.hb = setInterval(() => send('phoenix', 'heartbeat', {}), 25000);
+  };
+  ws.onmessage = (e) => {
+    if (team.ws !== ws) return;
+    let m; try { m = JSON.parse(e.data); } catch { return; }
+    if (m.event === 'phx_reply' && m.ref === team.joinRef) {
+      if (m.payload?.status !== 'ok') { toast('เข้าห้องทีมไม่ได้'); return; }
+      team.joined = true;
+      send(teamTopic(), 'presence', { type: 'presence', event: 'track', payload: { at: Date.now() } });
+      teamSend('hello');
+      renderTeamBadge();
+    } else if (m.event === 'presence_state') {
+      team.members = new Set(Object.keys(m.payload || {}));
+      renderTeamBadge();
+    } else if (m.event === 'presence_diff') {
+      for (const k of Object.keys(m.payload?.joins || {})) team.members.add(k);
+      for (const k of Object.keys(m.payload?.leaves || {})) team.members.delete(k);
+      renderTeamBadge();
+    } else if (m.event === 'broadcast' && m.payload?.event === 'spike') {
+      teamReceive(m.payload.payload || {});
+    }
+  };
+  ws.onclose = () => {
+    if (team.ws !== ws) return;
+    clearInterval(team.hb);
+    team.ws = null; team.joined = false; team.members.clear();
+    renderTeamBadge();
+    if (!team.room) return;
+    team.retry = Math.min(team.retry + 1, 6);
+    team.retryTimer = setTimeout(teamConnect, 1000 * 2 ** team.retry / 2); // 1 s … 32 s
+  };
+}
+
+/** Tell the room: start (with elapsed ms), stop, or hello (asks for a running timer). */
+function teamSend(kind, data = {}) {
+  const ws = team.ws;
+  if (!team.joined || ws?.readyState !== 1) return;
+  ws.send(JSON.stringify({ topic: teamTopic(), event: 'broadcast', ref: String(++team.ref), payload: { type: 'broadcast', event: 'spike', payload: { kind, from: team.me, ...data } } }));
+}
+
+function teamReceive(p) {
+  const running = spike.start && performance.now() - spike.start < SPIKE.total * 1000;
+  if (p.kind === 'start') {
+    const elapsed = Math.max(0, +p.elapsed || 0);
+    if (elapsed >= SPIKE.total * 1000) return;
+    // ignore an echo of the timer we already show (within half a second)
+    if (running && Math.abs(performance.now() - spike.start - elapsed) < 500) return;
+    spikeStart(elapsed);
+    navigator.vibrate?.(60);
+  } else if (p.kind === 'stop') {
+    if (spike.start) spikeIdle();
+  } else if (p.kind === 'hello' && running) {
+    teamSend('start', { elapsed: Math.round(performance.now() - spike.start) });
+  }
+}
+
+function renderTeamBadge() {
+  const b = $('#teamBadge');
+  if (!b) return;
+  b.hidden = !team.room;
+  if (!team.room) return;
+  const n = team.members.size;
+  b.textContent = `👥 ${team.room}` + (team.joined ? (n ? ` · ${n}` : '') : ' …');
+  b.title = team.joined ? `ห้องทีม ${team.room}: ${n || 1} คนออนไลน์ — spike นับพร้อมกัน (แตะเพื่อเปลี่ยน / ออก)` : 'กำลังเชื่อมต่อห้องทีม…';
+  b.classList.toggle('off', !team.joined);
+}
+
+function openTeamRoom() {
+  if (!inbox.cfg) { toast('ต้องตั้งกล่องรับ (Supabase) ก่อน — ⋯ → ตั้งค่ากล่องรับ'); return; }
+  const v = prompt('รหัสห้องทีม — ทุกคนใส่รหัสเดียวกัน แล้ว spike จะนับพร้อมกัน\n(ตัวอักษร a-z, 0-9, - · เว้นว่าง = ออกจากห้อง)', team.room);
+  if (v == null) return;
+  const room = v.trim().toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 32);
+  if (v.trim() && room.length < 3) { toast('รหัสห้องสั้นไป (อย่างน้อย 3 ตัว)'); return; }
+  team.room = room;
+  store.set('lp.teamRoom', room);
+  teamConnect();
+  toast(room ? `เข้าห้อง ${room} แล้ว — กด spike เครื่องไหนก็นับทุกเครื่อง` : 'ออกจากห้องทีมแล้ว');
+}
+
 async function inboxLoad() {
   try {
     const r = await fetch('data/inbox.json', { cache: 'no-cache' });
@@ -2730,6 +2830,7 @@ async function inboxLoad() {
     inbox.cfg = j?.url && j?.anonKey ? { url: j.url.replace(/\/+$/, ''), anonKey: j.anonKey } : null;
   } catch { inbox.cfg = null; }
   inboxRefresh();
+  if (!team.ws) teamConnect();
 }
 
 async function inboxCall(path, body, prefer) {
@@ -2795,6 +2896,11 @@ function bindInbox() {
   const f = $('#inboxForm').elements;
   for (const b of dlg.querySelectorAll('[data-close]')) b.addEventListener('click', () => dlg.close());
   $('#inboxBadge').addEventListener('click', inboxOpen);
+  $('#teamBadge').addEventListener('click', openTeamRoom);
+  // phones drop the socket in the background: reconnect when the page is back
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible' && team.room && !team.ws) teamConnect();
+  });
   $('#inboxTest').addEventListener('click', async () => {
     const prev = inbox.cfg;
     inbox.cfg = { url: f.url.value.trim().replace(/\/+$/, ''), anonKey: f.anonKey.value.trim() };
@@ -2960,6 +3066,7 @@ function bindUi() {
     if (act === 'receiveFile') $('#receiveFile').click();
     if (act === 'inbox') openInboxDialog();
     if (act === 'sizes') openSizeDialog();
+    if (act === 'team') openTeamRoom();
     if (act === 'refresh') { store.del(LS.maps); store.del(LS.agents); location.reload(); }
     if (act === 'reset') {
       const n = Object.keys(state.local).length;
