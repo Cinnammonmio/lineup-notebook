@@ -610,5 +610,38 @@
         "caption": "จุดเล็ง 2"
       }
     ]
+  },
+  {
+    "id": "mwdj2dbkjjtv",
+    "title": "Nanoswarm B · Hold",
+    "map": "Summit",
+    "agent": "Killjoy",
+    "ability": "Nanoswarm",
+    "side": "defense",
+    "site": "B",
+    "type": "hold",
+    "from": {
+      "x": 0.087,
+      "y": 0.2
+    },
+    "to": {
+      "x": 0.072,
+      "y": 0.348
+    },
+    "throw": "ปาปกติ",
+    "media": [
+      {
+        "src": "media/summit/killjoy-b-nanoswarm-mwdj2dbkjjtv-stand-vmwdj2dbk.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/summit/killjoy-b-nanoswarm-mwdj2dbkjjtv-aim-vmwdj2dbx.webp",
+        "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/summit/killjoy-b-nanoswarm-mwdj2dbkjjtv-result-vmwdj2dc1.webp",
+        "caption": "ผลลัพธ์"
+      }
+    ]
   }
 ]
