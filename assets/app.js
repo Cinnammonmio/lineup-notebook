@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.19.1';
+const APP_VERSION = '1.20.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -1271,15 +1271,17 @@ const section = (title, body) => el('div', { class: 'sec' }, el('h3', { text: ti
 const IMG_RE = /\.(png|jpe?g|webp|gif|avif|bmp)(\?|#|$)|^data:image\//i;
 const STAND_RE = /ยืน|stand/i;
 const AIM_RE = /เล็ง|aim|ปา|throw/i;
+const RESULT_RE = /ผล|result|landing/i;
 
-/** Split media into picture slots — stand, stand2 (below it), aim, aim2 — and everything else. */
+/** Split media into picture slots — stand, stand2 (below it), aim, aim2, result — and everything else. */
 function splitMedia(list) {
   const imgs = list.filter((m) => IMG_RE.test(m.src));
   const kindOf = (m) => {
-    const f = m.src.match(/-(stand|aim)(2)?(?:-v\w+)?\.\w+$/i);
+    const f = m.src.match(/-(stand|aim|result)(2)?(?:-v\w+)?\.\w+$/i);
     if (f) return f[1].toLowerCase() + (f[2] || '');
     const c = m.caption || '';
     const two = /2\s*$/.test(c) ? '2' : '';
+    if (RESULT_RE.test(c)) return 'result';
     if (STAND_RE.test(c)) return 'stand' + two;
     if (AIM_RE.test(c)) return 'aim' + two;
     return null;
@@ -1295,11 +1297,13 @@ function splitMedia(list) {
 /* ---------- picture board: stand | aim columns, each with 1–2 slots; dividers are draggable ---------- */
 
 const LAYOUT_DEFAULT = { col: 0.5, stand: 0.5, aim: 0.5 };
+const RES_DEFAULT = 0.333; // share of the width for the 3rd column (result picture)
 const clampR = (v) => Math.round(Math.min(0.8, Math.max(0.2, v)) * 1000) / 1000;
+const clampRes = (v) => Math.round(Math.min(0.6, Math.max(0.15, v)) * 1000) / 1000;
 
-/** cols: [{ key: 'stand'|'aim', top: Node, bottom: Node|null }] · layout: { col, stand, aim } · onChange(layout) after a drag */
+/** cols: [{ key: 'stand'|'aim'|'result', top: Node, bottom: Node|null }] (2 or 3) · layout: { col, stand, aim, res } · onChange(layout) after a drag */
 function makeBoard(cols, layout, onChange) {
-  const lay = { ...LAYOUT_DEFAULT, ...layout };
+  const lay = { ...LAYOUT_DEFAULT, res: RES_DEFAULT, ...layout };
   const root = el('div', { class: 'board' });
   const drag = (handle, axis, box, apply) => {
     handle.addEventListener('pointerdown', (e) => {
@@ -1308,7 +1312,7 @@ function makeBoard(cols, layout, onChange) {
       handle.classList.add('dragging');
       const move = (ev) => {
         const r = box.getBoundingClientRect();
-        apply(clampR(axis === 'x' ? (ev.clientX - r.left) / r.width : (ev.clientY - r.top) / r.height));
+        apply(axis === 'x' ? (ev.clientX - r.left) / r.width : (ev.clientY - r.top) / r.height);
       };
       const up = () => {
         handle.removeEventListener('pointermove', move);
@@ -1328,18 +1332,31 @@ function makeBoard(cols, layout, onChange) {
     if (c.bottom) {
       const bottom = el('div', { class: 'bcell' }, c.bottom);
       const hd = el('div', { class: 'hdiv', role: 'separator', 'aria-orientation': 'horizontal', title: 'ลากเพื่อปรับขนาด' });
-      const set = (r) => { lay[c.key] = r; top.style.flexGrow = r; bottom.style.flexGrow = 1 - r; };
+      const set = (r) => { r = clampR(r); lay[c.key] = r; top.style.flexGrow = r; bottom.style.flexGrow = 1 - r; };
       set(lay[c.key]);
       drag(hd, 'y', col, set);
       col.append(hd, bottom);
     }
     return col;
   });
-  const vd = el('div', { class: 'vdiv', role: 'separator', 'aria-orientation': 'vertical', title: 'ลากเพื่อปรับขนาด' });
-  const setCol = (r) => { lay.col = r; colEls[0].style.flexGrow = r; colEls[1].style.flexGrow = 1 - r; };
-  setCol(lay.col);
-  drag(vd, 'x', root, setCol);
+  const vdiv = () => el('div', { class: 'vdiv', role: 'separator', 'aria-orientation': 'vertical', title: 'ลากเพื่อปรับขนาด' });
+  const three = colEls.length > 2;
+  const grow = () => {
+    const rest = three ? 1 - lay.res : 1;
+    colEls[0].style.flexGrow = lay.col * rest;
+    colEls[1].style.flexGrow = (1 - lay.col) * rest;
+    if (three) colEls[2].style.flexGrow = lay.res;
+  };
+  const vd = vdiv();
+  // first divider: share between the first two columns (measured inside the space they have)
+  drag(vd, 'x', root, (r) => { lay.col = clampR(three ? r / (1 - lay.res) : r); grow(); });
   root.append(colEls[0], vd, colEls[1]);
+  if (three) {
+    const vd2 = vdiv();
+    drag(vd2, 'x', root, (r) => { lay.res = clampRes(1 - r); grow(); });
+    root.append(vd2, colEls[2]);
+  }
+  grow();
   return root;
 }
 
@@ -1462,11 +1479,12 @@ function bindZoomStage(stage) {
   stage.addEventListener('click', () => { if (zm.closeOnClick) { zm.closeOnClick = false; $('#zoom').close(); } });
 }
 
-function detailBoard(l, stand, stand2, aim, aim2) {
+function detailBoard(l, stand, stand2, aim, aim2, result) {
   // dividers can be dragged while viewing (not saved — the layout is set in the editor)
   const b = makeBoard([
     { key: 'stand', top: pairFig(stand, 'จุดยืน'), bottom: stand2 ? pairFig(stand2, 'จุดยืน 2') : null },
     { key: 'aim', top: pairFig(aim, 'จุดเล็ง', l.throw), bottom: aim2 ? pairFig(aim2, 'จุดเล็ง 2') : null },
+    ...(result ? [{ key: 'result', top: pairFig(result, 'ผลลัพธ์'), bottom: null }] : []),
   ], l.layout);
   b.classList.add('pair');
   b.append(el('span', { class: 'scroll-hint', 'aria-hidden': 'true', text: '▲ ปัดขึ้นดูวิธีทำ' }));
@@ -1491,8 +1509,8 @@ function openDetail(id) {
   const d = $('#detail');
   const icon = iconFor(l);
   const media = (l.media || []).map(parseMedia).filter(Boolean);
-  const { stand, stand2, aim, aim2, rest } = splitMedia(media);
-  const showPair = stand || aim || l.from;
+  const { stand, stand2, aim, aim2, result, rest } = splitMedia(media);
+  const showPair = stand || aim || result || l.from;
   const prev = neighbour(id, -1);
   const next = neighbour(id, 1);
   const navBtn = (t, label, target) => el('button', {
@@ -1515,7 +1533,7 @@ function openDetail(id) {
       navBtn('›', 'lineup ถัดไป', next),
       el('button', { type: 'button', class: 'btn icon', 'aria-label': 'ปิด', onclick: () => d.close() }, '✕')),
     el('div', { class: 'sheet-body' },
-      showPair ? detailBoard(l, stand, stand2, aim, aim2) : null,
+      showPair ? detailBoard(l, stand, stand2, aim, aim2, result) : null,
       el('div', { class: 'detail-cols' },
         el('div', { class: 'detail-text' },
           el('div', { class: 'chips' }, chips(l)),
@@ -1643,8 +1661,8 @@ function shotPath(d, kind, blob) {
 
 /* ---------- editor ---------- */
 
-const SHOT_KINDS = ['stand', 'stand2', 'aim', 'aim2'];
-const SHOT_LABEL = { stand: 'จุดยืน', stand2: 'จุดยืน 2', aim: 'จุดเล็ง', aim2: 'จุดเล็ง 2' };
+const SHOT_KINDS = ['stand', 'stand2', 'aim', 'aim2', 'result'];
+const SHOT_LABEL = { stand: 'จุดยืน', stand2: 'จุดยืน 2', aim: 'จุดเล็ง', aim2: 'จุดเล็ง 2', result: 'ผลลัพธ์' };
 const THROWS = ['ปาปกติ', 'กระโดดแล้วปา'];
 const TYPE_SHORT = { entry: 'Entry', execute: 'Execute', 'post-plant': 'Post-plant', retake: 'Retake', info: 'Info', hold: 'Hold', smoke: 'Smoke', other: '' };
 
@@ -1741,7 +1759,7 @@ function shotCell(kind, throwText) {
         el('button', { type: 'button', title: 'ไฮไลต์ / ครอป', onclick: (e) => { e.stopPropagation(); annotateShot(kind); } }, '✎'),
         el('button', { type: 'button', title: 'เปลี่ยนรูป', onclick: (e) => { e.stopPropagation(); chooseShot(kind); } }, 'เปลี่ยน'),
         el('button', { type: 'button', title: 'ลบรูป', onclick: remove }, '✕')),
-      !kind.endsWith('2') && !ed.shots[kind + '2'] && !ed.showSecond[kind]
+      kind !== 'result' && !kind.endsWith('2') && !ed.shots[kind + '2'] && !ed.showSecond[kind]
         ? el('button', { type: 'button', class: 'add-slot', onclick: (e) => { e.stopPropagation(); ed.showSecond[kind] = true; ed.activeShot = kind + '2'; renderShots(); } }, '+ ช่องล่าง')
         : null,
     ].filter(Boolean)
@@ -1761,6 +1779,7 @@ function renderShots() {
     top: shotCell(key, throwText),
     bottom: ed.shots[key + '2'] || ed.showSecond[key] ? shotCell(key + '2', throwText) : null,
   }));
+  cols.push({ key: 'result', top: shotCell('result', throwText), bottom: null }); // 3rd column: where it lands
   $('#shotBoard').replaceChildren(makeBoard(cols, ed.layout, (lay) => { ed.layout = lay; }));
 }
 
@@ -1868,7 +1887,9 @@ function readForm() {
   const lay = { ...LAYOUT_DEFAULT, ...state.editing.layout };
   const used = { col: true, stand: !!state.editing.shots.stand2, aim: !!state.editing.shots.aim2 };
   const changed = Object.keys(LAYOUT_DEFAULT).some((k) => used[k] && Math.abs(lay[k] - 0.5) > 0.01);
-  d.layout = changed ? Object.fromEntries(Object.keys(LAYOUT_DEFAULT).filter((k) => used[k]).map((k) => [k, clampR(lay[k])])) : undefined;
+  const out = changed ? Object.fromEntries(Object.keys(LAYOUT_DEFAULT).filter((k) => used[k]).map((k) => [k, clampR(lay[k])])) : {};
+  if (state.editing.shots.result && lay.res != null && Math.abs(lay.res - RES_DEFAULT) > 0.01) out.res = clampRes(lay.res);
+  d.layout = Object.keys(out).length ? out : undefined;
   return d;
 }
 const readRestMedia = () => $('#editForm').elements.media.value.split('\n').map((x) => x.trim()).filter(Boolean).map((x) => {
