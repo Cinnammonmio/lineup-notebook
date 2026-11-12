@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.18.0';
+const APP_VERSION = '1.19.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -286,10 +286,15 @@ function allItems() {
   return out;
 }
 
+/** Competitive (ranked) map pool — update when Riot rotates maps (usually the first patch of each Act). */
+const MAP_POOL = { patch: '13.08', maps: ['Abyss', 'Bind', 'Corrode', 'Haven', 'Lotus', 'Summit', 'Sunset'] };
+const inPool = (name) => MAP_POOL.maps.some((m) => norm(m) === norm(name));
+
 function mapNames() {
   const names = state.maps.map((m) => m.name);
   for (const l of all()) if (l.map && !names.some((n) => norm(n) === norm(l.map))) names.push(l.map);
-  return names;
+  // ranked pool first, everything else keeps its order behind it
+  return [...names.filter(inPool), ...names.filter((n) => !inPool(n))];
 }
 const canonMap = (n) => (n ? mapNames().find((x) => norm(x) === norm(n)) || null : null);
 
@@ -441,10 +446,12 @@ function renderMaps() {
     const m = mapOf(name);
     const on = norm(name) === norm(state.map);
     box.append(el('button', {
-      type: 'button', class: 'map-chip' + (on ? ' on' : ''), 'aria-pressed': String(on),
+      type: 'button', class: 'map-chip' + (on ? ' on' : '') + (inPool(name) ? ' pool' : ' off-pool'), 'aria-pressed': String(on),
+      title: inPool(name) ? `${name} · อยู่ใน map pool แรงก์ (แพทช์ ${MAP_POOL.patch})` : `${name} · ไม่อยู่ใน map pool แรงก์ตอนนี้`,
       onclick: () => setMap(name),
     },
     m?.banner ? el('img', { src: m.banner, alt: '', loading: 'lazy' }) : null,
+    inPool(name) ? el('span', { class: 'pool-tag', text: 'แรงก์' }) : null,
     el('span', { class: 'nm', text: name }),
     n ? el('span', { class: 'n', text: String(n) }) : null));
   }
