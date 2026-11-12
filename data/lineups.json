@@ -496,7 +496,12 @@
         "src": "media/haven/killjoy-a-nanoswarm-mwc7asesj1l2-result-vmwd06bkc.webp",
         "caption": "ผลลัพธ์"
       }
-    ]
+    ],
+    "layout": {
+      "col": 0.364,
+      "aim": 0.5,
+      "res": 0.15
+    }
   },
   {
     "id": "mwc7cso344jo",
