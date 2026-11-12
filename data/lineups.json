@@ -666,6 +666,18 @@
       {
         "src": "media/summit/killjoy-b-nanoswarm-mwdj95vfg2fq-stand-vmwdj95vf.webp",
         "caption": "จุดยืน"
+      },
+      {
+        "src": "media/summit/killjoy-b-nanoswarm-mwdj95vfg2fq-aim-vmwdjadqg.webp",
+        "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/summit/killjoy-b-nanoswarm-mwdj95vfg2fq-aim2-vmwdjadqp.webp",
+        "caption": "จุดเล็ง 2"
+      },
+      {
+        "src": "media/summit/killjoy-b-nanoswarm-mwdj95vfg2fq-result-vmwdjadqt.webp",
+        "caption": "ผลลัพธ์"
       }
     ]
   }
