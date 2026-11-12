@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.22.0';
+const APP_VERSION = '1.23.0';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -470,7 +470,12 @@ function lineEls(l, cls, svg, pins, interactive, num) {
       class: 'ln ' + cls, 'data-id': id, style: col ? `stroke:${col}` : null,
     }));
   }
-  if (l.from) svg.append(svgEl('circle', { cx: l.from.x * 1000, cy: l.from.y * 1000, r: 11, class: 'st ' + cls, 'data-id': id, style: col ? `fill:${col}` : null }));
+  // stand point: the agent's face (ring = side); a coloured dot when the agent picture isn't known
+  const face = agentOf(l.agent)?.icon;
+  if (l.from && face) {
+    pins.append(el('span', { class: 'st-face ' + cls, 'data-id': id, style: `left:${l.from.x * 100}%;top:${l.from.y * 100}%` + (col ? `;--ag:${col}` : '') },
+      el('img', { src: face, alt: '' })));
+  } else if (l.from) svg.append(svgEl('circle', { cx: l.from.x * 1000, cy: l.from.y * 1000, r: 11, class: 'st ' + cls, 'data-id': id, style: col ? `fill:${col}` : null }));
   if (l.to) {
     const icon = iconFor(l);
     const area = areaSize(l);
@@ -544,7 +549,7 @@ function zoomForState() {
 /** Change the highlighted lineup without rebuilding the page (rebuilding made every icon flicker). */
 function applySelection() {
   const sel = state.selected;
-  for (const n of document.querySelectorAll('#mapSvg [data-id], #pins .pin[data-id], #pins .area[data-id]')) {
+  for (const n of document.querySelectorAll('#mapSvg [data-id], #pins .pin[data-id], #pins .area[data-id], #pins .st-face[data-id]')) {
     const id = n.getAttribute('data-id');
     n.classList.toggle('dim', !!sel && id !== sel);
     n.classList.toggle('sel', id === sel);
@@ -2670,6 +2675,7 @@ function openSizeDialog() {
     const input = el('input', { type: 'range', min: '0', max: '12', step: '0.1', value: String(metres(k)) });
     const out = el('output', { text: fmt(metres(k)) });
     const row = el('div', { class: 'sz-row' + (onMap.has(k) ? ' on-map' : ''), style: agentOf(agent)?.color ? `--ag:${agentOf(agent).color}` : null },
+      agentOf(agent)?.icon ? el('img', { class: 'sz-agent', src: agentOf(agent).icon, alt: agent, title: agent }) : el('span', { class: 'sz-noic', text: '?' }),
       icon ? el('img', { src: icon, alt: '' }) : el('span', { class: 'sz-noic', text: '◆' }),
       el('span', { class: 'sz-name' }, el('b', { text: ability }), el('small', { text: agent || '' })),
       input, out,
