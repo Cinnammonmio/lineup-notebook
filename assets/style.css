@@ -105,7 +105,7 @@ a { color: var(--accent); }
 .map-chip.on { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); }
 .map-chip.on img, .map-chip:hover img { opacity: .8; }
 /* ranked map pool: tag + accent edge; maps out of rotation are dimmed */
-.map-chip .pool-tag { position: absolute; left: 6px; top: 6px; font-size: 10px; font-weight: 700; line-height: 16px; padding: 0 6px; border-radius: 999px; background: var(--accent); color: #04110f; letter-spacing: .02em; }
+.map-chip .pool-tag { position: absolute; left: 5px; top: 5px; font-size: 8px; font-weight: 700; line-height: 12px; padding: 0 4px; border-radius: 999px; background: var(--accent); color: #04110f; letter-spacing: .02em; }
 .map-chip.pool { border-left: 3px solid var(--accent); }
 .map-chip.off-pool:not(.on) { opacity: .55; }
 .map-chip.off-pool:not(.on):hover { opacity: .85; }
