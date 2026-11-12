@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.22.0';
+const APP_VERSION = '1.22.1';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -2670,6 +2670,7 @@ function openSizeDialog() {
     const input = el('input', { type: 'range', min: '0', max: '12', step: '0.1', value: String(metres(k)) });
     const out = el('output', { text: fmt(metres(k)) });
     const row = el('div', { class: 'sz-row' + (onMap.has(k) ? ' on-map' : ''), style: agentOf(agent)?.color ? `--ag:${agentOf(agent).color}` : null },
+      agentOf(agent)?.icon ? el('img', { class: 'sz-agent', src: agentOf(agent).icon, alt: agent, title: agent }) : el('span', { class: 'sz-noic', text: '?' }),
       icon ? el('img', { src: icon, alt: '' }) : el('span', { class: 'sz-noic', text: '◆' }),
       el('span', { class: 'sz-name' }, el('b', { text: ability }), el('small', { text: agent || '' })),
       input, out,
