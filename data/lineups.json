@@ -680,5 +680,40 @@
         "caption": "ผลลัพธ์"
       }
     ]
+  },
+  {
+    "id": "mwdn2wh9m63n",
+    "title": "B · Hold",
+    "map": "Corrode",
+    "side": "defense",
+    "site": "B",
+    "type": "hold",
+    "from": {
+      "x": 0.332,
+      "y": 0.852
+    },
+    "to": {
+      "x": 0.519,
+      "y": 0.697
+    },
+    "throw": "ปาปกติ",
+    "media": [
+      {
+        "src": "media/corrode/x-b-x-mwdn2wh9m63n-stand-vmwdn2wh9.webp",
+        "caption": "จุดยืน"
+      },
+      {
+        "src": "media/corrode/x-b-x-mwdn2wh9m63n-aim-vmwdn2whm.webp",
+        "caption": "จุดเล็ง"
+      },
+      {
+        "src": "media/corrode/x-b-x-mwdn2wh9m63n-aim2-vmwdn2whq.webp",
+        "caption": "จุดเล็ง 2"
+      },
+      {
+        "src": "media/corrode/x-b-x-mwdn2wh9m63n-result-vmwdn2whu.webp",
+        "caption": "ผลลัพธ์"
+      }
+    ]
   }
 ]
