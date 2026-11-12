@@ -8,7 +8,7 @@
  */
 
 /** App version — bump on every release, together with VERSION in sw.js, and note it in CHANGELOG.md. */
-const APP_VERSION = '1.25.0';
+const APP_VERSION = '1.25.1';
 
 const MAPS_URL = 'https://valorant-api.com/v1/maps';
 const AGENTS_URL = 'https://valorant-api.com/v1/agents?isPlayableCharacter=true';
@@ -1358,13 +1358,21 @@ function splitMedia(list) {
 /* ---------- picture board: stand | aim columns, each with 1–2 slots; dividers are draggable ---------- */
 
 const LAYOUT_DEFAULT = { col: 0.5, stand: 0.5, aim: 0.5 };
-const RES_DEFAULT = 0.333; // share of the width for the 3rd column (result picture)
+const RES_DEFAULT = 0.3; // share of the width for the 3rd column (result picture): stand 30 : aim 40 : result 30
+const COL3_DEFAULT = 3 / 7; // stand's share of the first two columns with 3 columns (30 of 70)
+/** Layout defaults for 2 or 3 columns. A width saved before the result column existed (no 'res') isn't reused for 3. */
+function boardLayout(layout, three) {
+  const src = layout || {};
+  const lay = { ...LAYOUT_DEFAULT, col: three ? COL3_DEFAULT : 0.5, res: RES_DEFAULT, ...src };
+  if (three && src.res == null) lay.col = COL3_DEFAULT;
+  return lay;
+}
 const clampR = (v) => Math.round(Math.min(0.8, Math.max(0.2, v)) * 1000) / 1000;
 const clampRes = (v) => Math.round(Math.min(0.6, Math.max(0.15, v)) * 1000) / 1000;
 
 /** cols: [{ key: 'stand'|'aim'|'result', top: Node, bottom: Node|null }] (2 or 3) · layout: { col, stand, aim, res } · onChange(layout) after a drag */
 function makeBoard(cols, layout, onChange) {
-  const lay = { ...LAYOUT_DEFAULT, res: RES_DEFAULT, ...layout };
+  const lay = boardLayout(layout, cols.length > 2);
   const root = el('div', { class: 'board' });
   const drag = (handle, axis, box, apply) => {
     handle.addEventListener('pointerdown', (e) => {
@@ -1945,12 +1953,13 @@ function readForm() {
   d.steps = f.steps.value.trim();
   d.throw = readThrow();
   d.tags = f.tags.value.split(',').map((x) => x.trim()).filter(Boolean);
-  const lay = { ...LAYOUT_DEFAULT, ...state.editing.layout };
-  const used = { col: true, stand: !!state.editing.shots.stand2, aim: !!state.editing.shots.aim2 };
-  const changed = Object.keys(LAYOUT_DEFAULT).some((k) => used[k] && Math.abs(lay[k] - 0.5) > 0.01);
-  const out = changed ? Object.fromEntries(Object.keys(LAYOUT_DEFAULT).filter((k) => used[k]).map((k) => [k, clampR(lay[k])])) : {};
-  if (state.editing.shots.result && lay.res != null && Math.abs(lay.res - RES_DEFAULT) > 0.01) out.res = clampRes(lay.res);
-  d.layout = Object.keys(out).length ? out : undefined;
+  const three = !!state.editing.shots.result;
+  const def = boardLayout({}, three);
+  const lay = boardLayout(state.editing.layout, three);
+  const used = { col: true, stand: !!state.editing.shots.stand2, aim: !!state.editing.shots.aim2, res: three };
+  const changed = Object.keys(def).some((k) => used[k] && Math.abs(lay[k] - def[k]) > 0.01);
+  // save only when moved from the default; with 3 columns col + res always go together (see boardLayout)
+  d.layout = changed ? Object.fromEntries(Object.keys(def).filter((k) => used[k]).map((k) => [k, k === 'res' ? clampRes(lay[k]) : clampR(lay[k])])) : undefined;
   return d;
 }
 const readRestMedia = () => $('#editForm').elements.media.value.split('\n').map((x) => x.trim()).filter(Boolean).map((x) => {
